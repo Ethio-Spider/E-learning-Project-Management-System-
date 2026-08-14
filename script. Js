@@ -1,0 +1,24 @@
+document.addEventListener("DOMContentLoaded", () => {
+    console.log("E-Learning system frontend loaded successfully.");
+
+    // Example: Simple search filter for project cards
+    const searchInput = document.createElement("input");
+    searchInput.type = "text";
+    searchInput.placeholder = "Search projects...";
+    searchInput.style.margin = "10px 0";
+    searchInput.style.padding = "8px";
+    searchInput.style.width = "100%";
+
+    const container = document.querySelector(".container");
+    container.insertBefore(searchInput, container.firstChild);
+
+    searchInput.addEventListener("input", (e) => {
+        const query = e.target.value.toLowerCase();
+        const cards = document.querySelectorAll(".project-card");
+
+        cards.forEach(card => {
+            const text = card.textContent.toLowerCase();
+            card.style.display = text.includes(query) ? "block" : "none";
+        });
+    });
+});
