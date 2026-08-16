@@ -1,0 +1,315 @@
+<?php
+declare(strict_types=1);
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="LearnFlow Pro - Login to your e-learning dashboard">
+    <meta name="theme-color" content="#4f46e5">
+    <title>Login - LearnFlow Pro</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        body {
+            display: grid;
+            place-items: center;
+            min-height: 100vh;
+        }
+        .login-container {
+            width: min(420px, 100% - 40px);
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 18px 40px rgba(79, 70, 229, 0.08);
+            border: 1px solid #dfe7ff;
+        }
+        .login-header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+        .login-brand {
+            width: 56px;
+            height: 56px;
+            border-radius: 14px;
+            display: grid;
+            place-items: center;
+            background: linear-gradient(135deg, #818cf8, #22c55e);
+            color: white;
+            font-weight: 800;
+            font-size: 1.5rem;
+            margin: 0 auto 12px;
+        }
+        .login-header h1 {
+            font-size: 1.8rem;
+            color: #172033;
+            margin-bottom: 8px;
+        }
+        .login-header p {
+            color: #5d6b82;
+            font-size: 0.95rem;
+        }
+        .demo-info {
+            background: #f0fdf4;
+            border: 1px solid #86efac;
+            border-radius: 12px;
+            padding: 14px;
+            margin-bottom: 24px;
+            font-size: 0.85rem;
+            color: #166534;
+        }
+        .demo-info strong {
+            display: block;
+            margin-bottom: 6px;
+        }
+        .demo-info p {
+            margin: 4px 0;
+        }
+        .form-section {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .form-group label {
+            font-weight: 700;
+            color: #172033;
+            font-size: 0.95rem;
+        }
+        .form-group input,
+        .form-group select {
+            padding: 12px 14px;
+            border-radius: 10px;
+            border: 1px solid #dfe7ff;
+            background: #f8fafc;
+            color: #172033;
+            font-size: 1rem;
+            transition: border-color 0.2s ease, background-color 0.2s ease;
+        }
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #4f46e5;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+        }
+        .remember-forgot {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.85rem;
+        }
+        .remember-forgot a {
+            color: #4f46e5;
+            text-decoration: none;
+            font-weight: 700;
+        }
+        .remember-forgot a:hover {
+            text-decoration: underline;
+        }
+        .btn-login {
+            width: 100%;
+            padding: 12px 16px;
+            background: linear-gradient(135deg, #4f46e5, #7c3aed);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-weight: 700;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+        }
+        .btn-login:hover {
+            opacity: 0.95;
+            transform: translateY(-2px);
+        }
+        .btn-login:active {
+            transform: translateY(0);
+        }
+        .error-message {
+            color: #ef4444;
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            display: none;
+            margin-bottom: 16px;
+        }
+        .success-message {
+            color: #047857;
+            background: #ecfdf5;
+            border: 1px solid #a7f3d0;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            display: none;
+            margin-bottom: 16px;
+        }
+        .signup-link {
+            text-align: center;
+            font-size: 0.9rem;
+            color: #5d6b82;
+            margin-top: 20px;
+        }
+        .signup-link a {
+            color: #4f46e5;
+            text-decoration: none;
+            font-weight: 700;
+        }
+        .signup-link a:hover {
+            text-decoration: underline;
+        }
+        .loading-spinner {
+            display: none;
+            width: 18px;
+            height: 18px;
+            border: 3px solid #dbeafe;
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 8px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-header">
+            <div class="login-brand">LF</div>
+            <h1>LearnFlow</h1>
+            <p>Modern E-Learning Platform</p>
+        </div>
+
+        <div id="errorMessage" class="error-message"></div>
+        <div id="successMessage" class="success-message"></div>
+
+        <div class="demo-info">
+            <strong>Demo Credentials:</strong>
+            <p><strong>Student:</strong> student@learnflow.app / student123</p>
+            <p><strong>Instructor:</strong> instructor@learnflow.app / instructor123</p>
+            <p><strong>Admin:</strong> admin@learnflow.app / admin123</p>
+        </div>
+
+        <form id="loginForm" class="form-section">
+            <div class="form-group">
+                <label for="email">Email Address</label>
+                <input type="email" id="email" name="email" required placeholder="you@learnflow.app">
+            </div>
+
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" required placeholder="••••••••">
+            </div>
+
+            <div class="form-group">
+                <label for="role">Login as</label>
+                <select id="role" name="role" required>
+                    <option value="student">Student</option>
+                    <option value="instructor">Instructor</option>
+                    <option value="admin">Admin</option>
+                </select>
+            </div>
+
+            <div class="remember-forgot">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="remember" name="remember" style="width: 18px; height: 18px; cursor: pointer;">
+                    Remember me
+                </label>
+                <a href="#forgot">Forgot password?</a>
+            </div>
+
+            <button type="submit" class="btn-login">
+                <span class="loading-spinner" id="loadingSpinner"></span>
+                <span id="buttonText">Sign In</span>
+            </button>
+        </form>
+
+        <div class="signup-link">
+            Don't have an account? <a href="register.html">Create one</a>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('loginForm');
+        const errorMsg = document.getElementById('errorMessage');
+        const successMsg = document.getElementById('successMessage');
+        const loadingSpinner = document.getElementById('loadingSpinner');
+        const buttonText = document.getElementById('buttonText');
+
+        function showError(message) {
+            errorMsg.textContent = message;
+            errorMsg.style.display = 'block';
+            successMsg.style.display = 'none';
+        }
+
+        function showSuccess(message) {
+            successMsg.textContent = message;
+            successMsg.style.display = 'block';
+            errorMsg.style.display = 'none';
+        }
+
+        function hideMessages() {
+            errorMsg.style.display = 'none';
+            successMsg.style.display = 'none';
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            hideMessages();
+
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value.trim();
+            const role = document.getElementById('role').value;
+
+            if (!email || !password) {
+                showError('Please fill in all fields');
+                return;
+            }
+
+            loadingSpinner.style.display = 'inline-block';
+            buttonText.textContent = 'Signing in...';
+            form.querySelector('button').disabled = true;
+
+            try {
+                const response = await fetch(`api.php?action=login&role=${encodeURIComponent(role)}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password }),
+                });
+
+                const result = await response.json();
+
+                if (!response.ok || !result.success) {
+                    showError(result.message || 'Login failed');
+                    return;
+                }
+
+                showSuccess('Login successful! Redirecting...');
+                setTimeout(() => {
+                    window.location.href = 'index.php';
+                }, 1500);
+            } catch (error) {
+                showError('Connection error: ' + error.message);
+            } finally {
+                loadingSpinner.style.display = 'none';
+                buttonText.textContent = 'Sign In';
+                form.querySelector('button').disabled = false;
+            }
+        });
+
+        // Pre-fill with demo credentials if needed
+        if (new URLSearchParams(window.location.search).get('demo') === 'student') {
+            document.getElementById('email').value = 'student@learnflow.app';
+            document.getElementById('password').value = 'student123';
+        }
+    </script>
+</body>
+</html>

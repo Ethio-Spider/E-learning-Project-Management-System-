@@ -130,4 +130,101 @@ class AssignmentRepository
         $stmt = $this->pdo->prepare($sql);
         return $stmt->execute([$score, $feedback, $gradedBy, $submissionId]);
     }
+
+    /**
+     * Create submission from array (new API)
+     */
+    public function createSubmission(array $data): int
+    {
+        $sql = 'INSERT INTO submissions (assignment_id, student_email, submission_text, file_url, submitted_at) 
+                VALUES (?, ?, ?, ?, ?)';
+        
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([
+            $data['assignment_id'] ?? 0,
+            $data['student_email'] ?? '',
+            $data['text_content'] ?? '',
+            $data['file_path'] ?? null,
+            $data['submitted_at'] ?? date('Y-m-d H:i:s'),
+        ]);
+
+        return (int)$this->pdo->lastInsertId();
+    }
+
+    /**
+     * Get submissions with filtering and pagination (new API)
+     */
+    public function getSubmissions(array $filter = [], int $limit = 20, int $offset = 0): array
+    {
+        $query = 'SELECT s.id, s.assignment_id, s.student_email, s.submission_text, s.file_url, 
+                         s.submitted_at, s.score, s.feedback, s.graded_at, a.title as assignment_title, 
+                         a.project_id as course_id
+                  FROM submissions s
+                  LEFT JOIN assignments a ON s.assignment_id = a.id
+                  WHERE s.deleted_at IS NULL';
+        
+        $params = [];
+
+        if (!empty($filter['course_id'])) {
+            $query .= ' AND a.project_id = ?';
+            $params[] = $filter['course_id'];
+        }
+
+        if (!empty($filter['assignment_id'])) {
+            $query .= ' AND s.assignment_id = ?';
+            $params[] = $filter['assignment_id'];
+        }
+
+        if (!empty($filter['status'])) {
+            if ($filter['status'] === 'pending') {
+                $query .= ' AND s.score IS NULL';
+            } elseif ($filter['status'] === 'graded') {
+                $query .= ' AND s.score IS NOT NULL';
+            }
+        }
+
+        $query .= ' ORDER BY s.submitted_at DESC LIMIT ? OFFSET ?';
+        $params[] = $limit;
+        $params[] = $offset;
+
+        $stmt = $this->pdo->prepare($query);
+        $stmt->execute($params);
+
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * Count submissions with filtering (new API)
+     */
+    public function getSubmissionsCount(array $filter = []): int
+    {
+        $query = 'SELECT COUNT(*) as total FROM submissions s
+                  LEFT JOIN assignments a ON s.assignment_id = a.id
+                  WHERE s.deleted_at IS NULL';
+        
+        $params = [];
+
+        if (!empty($filter['course_id'])) {
+            $query .= ' AND a.project_id = ?';
+            $params[] = $filter['course_id'];
+        }
+
+        if (!empty($filter['assignment_id'])) {
+            $query .= ' AND s.assignment_id = ?';
+            $params[] = $filter['assignment_id'];
+        }
+
+        if (!empty($filter['status'])) {
+            if ($filter['status'] === 'pending') {
+                $query .= ' AND s.score IS NULL';
+            } elseif ($filter['status'] === 'graded') {
+                $query .= ' AND s.score IS NOT NULL';
+            }
+        }
+
+        $stmt = $this->pdo->prepare($query);
+        $stmt->execute($params);
+
+        return (int)$stmt->fetchColumn();
+    }
 }

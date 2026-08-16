@@ -1,0 +1,506 @@
+<?php
+declare(strict_types=1);
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Admin Panel - User Management">
+    <meta name="theme-color" content="#4f46e5">
+    <title>Admin Users - LearnFlow Pro</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .admin-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .search-bar {
+            flex: 1;
+            min-width: 200px;
+        }
+        .search-bar input {
+            width: 100%;
+            padding: 10px 14px;
+            border-radius: 10px;
+            border: 1px solid #dfe7ff;
+            background: white;
+            color: #172033;
+        }
+        .admin-actions {
+            display: flex;
+            gap: 12px;
+        }
+        .users-table {
+            background: white;
+            border: 1px solid #dfe7ff;
+            border-radius: 14px;
+            padding: 20px;
+            overflow-x: auto;
+            box-shadow: 0 18px 40px rgba(79, 70, 229, 0.08);
+        }
+        .users-table table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.95rem;
+        }
+        .users-table th {
+            background: #eef2ff;
+            padding: 12px 16px;
+            text-align: left;
+            font-weight: 700;
+            color: #172033;
+            border-bottom: 2px solid #dfe7ff;
+        }
+        .users-table td {
+            padding: 14px 16px;
+            border-bottom: 1px solid #dfe7ff;
+            color: #5d6b82;
+        }
+        .users-table tr:hover {
+            background: #f8fafc;
+        }
+        .user-name {
+            font-weight: 700;
+            color: #172033;
+            display: block;
+            margin-bottom: 2px;
+        }
+        .user-email {
+            font-size: 0.85rem;
+            color: #5d6b82;
+        }
+        .role-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 700;
+        }
+        .role-badge.student {
+            background: #dbeafe;
+            color: #0c4a6e;
+        }
+        .role-badge.instructor {
+            background: #ddd6fe;
+            color: #3730a3;
+        }
+        .role-badge.admin {
+            background: #fecaca;
+            color: #7f1d1d;
+        }
+        .user-actions {
+            display: flex;
+            gap: 8px;
+        }
+        .btn-small {
+            padding: 6px 10px;
+            font-size: 0.8rem;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            background: #eef2ff;
+            color: #4f46e5;
+            font-weight: 700;
+            transition: all 0.2s ease;
+        }
+        .btn-small:hover {
+            background: #4f46e5;
+            color: white;
+        }
+        .btn-delete {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+        .btn-delete:hover {
+            background: #dc2626;
+            color: white;
+        }
+        .pagination {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 20px;
+        }
+        .pagination button {
+            padding: 8px 12px;
+            border: 1px solid #dfe7ff;
+            background: white;
+            color: #4f46e5;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 700;
+        }
+        .pagination button.active {
+            background: #4f46e5;
+            color: white;
+            border-color: #4f46e5;
+        }
+        .pagination button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.6);
+            z-index: 1000;
+            place-items: center;
+            padding: 20px;
+        }
+        .modal.active {
+            display: grid;
+        }
+        .modal-content {
+            background: white;
+            border-radius: 14px;
+            padding: 30px;
+            max-width: 500px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+        .modal-header {
+            margin-bottom: 20px;
+        }
+        .modal-header h2 {
+            margin: 0 0 8px 0;
+            color: #172033;
+        }
+        .modal-header p {
+            margin: 0;
+            color: #5d6b82;
+        }
+        .modal-close {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: transparent;
+            border: none;
+            font-size: 28px;
+            color: #5d6b82;
+            cursor: pointer;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+        .form-group label {
+            font-weight: 700;
+            color: #172033;
+        }
+        .form-group input,
+        .form-group select {
+            padding: 10px 12px;
+            border: 1px solid #dfe7ff;
+            border-radius: 8px;
+            background: #f8fafc;
+            color: #172033;
+        }
+        .modal-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 24px;
+        }
+        .modal-actions button {
+            flex: 1;
+            padding: 10px 16px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .btn-primary-modal {
+            background: #4f46e5;
+            color: white;
+        }
+        .btn-secondary-modal {
+            background: #eef2ff;
+            color: #4f46e5;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-shell" style="grid-template-columns: 1fr;">
+        <main class="main-panel">
+            <header class="topbar">
+                <div>
+                    <p class="eyebrow">LearnFlow Pro</p>
+                    <h2>User Management</h2>
+                </div>
+                <div class="topbar-actions">
+                    <button class="btn btn-primary" onclick="openNewUserModal()">+ Add User</button>
+                    <button class="btn btn-secondary" onclick="loadUsers()">Refresh</button>
+                </div>
+            </header>
+
+            <div class="admin-toolbar">
+                <div class="search-bar">
+                    <input type="text" id="searchInput" placeholder="Search users by name or email..." onkeyup="filterUsers()">
+                </div>
+                <div style="display: flex; gap: 12px;">
+                    <select id="roleFilter" onchange="filterByRole()" style="padding: 10px 14px; border-radius: 10px; border: 1px solid #dfe7ff;">
+                        <option value="">All Roles</option>
+                        <option value="student">Students</option>
+                        <option value="instructor">Instructors</option>
+                        <option value="admin">Admins</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="users-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Role</th>
+                            <th>Joined</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="usersTableBody">
+                        <tr>
+                            <td colspan="5" style="text-align: center; padding: 40px;">Loading users...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="pagination" id="paginationContainer"></div>
+        </main>
+    </div>
+
+    <!-- New User Modal -->
+    <div id="newUserModal" class="modal">
+        <div class="modal-content" style="position: relative;">
+            <button class="modal-close" onclick="closeModal('newUserModal')">×</button>
+            <div class="modal-header">
+                <h2>Add New User</h2>
+                <p>Create a new user account</p>
+            </div>
+            <form id="newUserForm">
+                <div class="form-group">
+                    <label for="firstName">First Name</label>
+                    <input type="text" id="firstName" name="firstName" required>
+                </div>
+                <div class="form-group">
+                    <label for="lastName">Last Name</label>
+                    <input type="text" id="lastName" name="lastName" required>
+                </div>
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required minlength="8">
+                </div>
+                <div class="form-group">
+                    <label for="role">Role</label>
+                    <select id="role" name="role" required>
+                        <option value="student">Student</option>
+                        <option value="instructor">Instructor</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary-modal" onclick="closeModal('newUserModal')">Cancel</button>
+                    <button type="submit" class="btn-primary-modal">Create User</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Delete User Modal -->
+    <div id="deleteUserModal" class="modal">
+        <div class="modal-content" style="position: relative;">
+            <button class="modal-close" onclick="closeModal('deleteUserModal')">×</button>
+            <div class="modal-header">
+                <h2>Delete User?</h2>
+                <p>This action cannot be undone.</p>
+            </div>
+            <p id="deleteUserMessage" style="color: #5d6b82;"></p>
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary-modal" onclick="closeModal('deleteUserModal')">Cancel</button>
+                <button type="button" class="btn-delete" style="padding: 10px 16px; border: none; border-radius: 8px; font-weight: 700; cursor: pointer;" onclick="confirmDelete()">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentPage = 1;
+        let allUsers = [];
+        let usersToDelete = null;
+
+        loadUsers();
+
+        async function loadUsers() {
+            try {
+                const response = await fetch(`api.php?action=admin-users&page=${currentPage}`);
+                const result = await response.json();
+
+                if (!result.success) {
+                    alert('Failed to load users: ' + result.message);
+                    return;
+                }
+
+                allUsers = result.data.users || [];
+                renderUsers(allUsers);
+                renderPagination(result.data.pagination);
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
+        function renderUsers(users) {
+            const tbody = document.getElementById('usersTableBody');
+
+            if (!users.length) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 40px;">No users found</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = users.map(user => `
+                <tr>
+                    <td>
+                        <span class="user-name">${user.first_name} ${user.last_name}</span>
+                        <span class="user-email">${user.email}</span>
+                    </td>
+                    <td>${user.email}</td>
+                    <td><span class="role-badge ${user.role}">${user.role}</span></td>
+                    <td>${new Date(user.created_at).toLocaleDateString()}</td>
+                    <td>
+                        <div class="user-actions">
+                            <button class="btn-small" onclick="editUser(${user.id})">Edit</button>
+                            <button class="btn-small btn-delete" onclick="deleteUser(${user.id}, '${user.first_name} ${user.last_name}')">Delete</button>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function renderPagination(pagination) {
+            const container = document.getElementById('paginationContainer');
+            if (pagination.total_pages <= 1) {
+                container.innerHTML = '';
+                return;
+            }
+
+            let html = '';
+            for (let i = 1; i <= pagination.total_pages; i++) {
+                const active = i === currentPage ? 'active' : '';
+                html += `<button class="${active}" onclick="goToPage(${i})">${i}</button>`;
+            }
+            container.innerHTML = html;
+        }
+
+        function filterUsers() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const filtered = allUsers.filter(user =>
+                user.first_name.toLowerCase().includes(searchTerm) ||
+                user.last_name.toLowerCase().includes(searchTerm) ||
+                user.email.toLowerCase().includes(searchTerm)
+            );
+            renderUsers(filtered);
+        }
+
+        function filterByRole() {
+            const role = document.getElementById('roleFilter').value;
+            if (!role) {
+                renderUsers(allUsers);
+            } else {
+                renderUsers(allUsers.filter(u => u.role === role));
+            }
+        }
+
+        function openNewUserModal() {
+            document.getElementById('newUserForm').reset();
+            document.getElementById('newUserModal').classList.add('active');
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
+        }
+
+        function deleteUser(userId, userName) {
+            usersToDelete = { id: userId, name: userName };
+            document.getElementById('deleteUserMessage').textContent = `Are you sure you want to delete ${userName}?`;
+            document.getElementById('deleteUserModal').classList.add('active');
+        }
+
+        async function confirmDelete() {
+            if (!usersToDelete) return;
+
+            try {
+                const response = await fetch('api.php?action=delete-user', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: usersToDelete.id }),
+                });
+
+                const result = await response.json();
+
+                if (!result.success) {
+                    alert('Failed to delete user: ' + result.message);
+                    return;
+                }
+
+                alert('User deleted successfully');
+                closeModal('deleteUserModal');
+                loadUsers();
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
+        function editUser(userId) {
+            alert('Edit functionality coming soon');
+        }
+
+        function goToPage(page) {
+            currentPage = page;
+            loadUsers();
+        }
+
+        document.getElementById('newUserForm')?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const formData = {
+                first_name: document.getElementById('firstName').value,
+                last_name: document.getElementById('lastName').value,
+                email: document.getElementById('email').value,
+                password: document.getElementById('password').value,
+                role: document.getElementById('role').value,
+            };
+
+            try {
+                const response = await fetch('api.php?action=register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(formData),
+                });
+
+                const result = await response.json();
+
+                if (!result.success) {
+                    alert('Failed to create user: ' + result.message);
+                    return;
+                }
+
+                alert('User created successfully');
+                closeModal('newUserModal');
+                loadUsers();
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        });
+    </script>
+</body>
+</html>

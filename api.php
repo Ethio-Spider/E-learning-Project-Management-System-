@@ -12,6 +12,11 @@ require_once __DIR__ . '/classes/EnrollmentRepository.php';
 require_once __DIR__ . '/classes/AssignmentRepository.php';
 require_once __DIR__ . '/classes/ProgressRepository.php';
 require_once __DIR__ . '/classes/CertificateRepository.php';
+require_once __DIR__ . '/classes/UserRepository.php';
+require_once __DIR__ . '/classes/FileUploadHandler.php';
+require_once __DIR__ . '/classes/NotificationService.php';
+require_once __DIR__ . '/classes/PaymentService.php';
+require_once __DIR__ . '/classes/Validator.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -246,6 +251,335 @@ try {
         session_unset();
         session_destroy();
         apiResponse(true, 'Logged out successfully.', null);
+    }
+
+    // ========== REGISTRATION & USER MANAGEMENT ==========
+
+    if ($method === 'POST' && $action === 'register') {
+        $input = json_decode(file_get_contents('php://input') ?: '{}', true) ?? [];
+        
+        $firstName = trim((string)($input['first_name'] ?? ''));
+        $lastName = trim((string)($input['last_name'] ?? ''));
+        $email = trim((string)($input['email'] ?? ''));
+        $password = (string)($input['password'] ?? '');
+        $role = strtolower(trim((string)($input['role'] ?? 'student')));
+
+        if (empty($firstName) || empty($lastName)) {
+            apiResponse(false, 'First and last name are required.', null, 400);
+        }
+
+        if (!Validator::email($email)) {
+            apiResponse(false, 'Invalid email format.', null, 400);
+        }
+
+        if (strlen($password) < 8) {
+            apiResponse(false, 'Password must be at least 8 characters.', null, 400);
+        }
+
+        if (!in_array($role, ['student', 'instructor', 'admin'], true)) {
+            apiResponse(false, 'Invalid role. Must be student, instructor, or admin.', null, 400);
+        }
+
+        try {
+            $pdo = getDatabase();
+            $userRepo = new UserRepository($pdo);
+            
+            $userId = $userRepo->create($firstName, $lastName, $email, $password, $role);
+            
+            if (!$userId) {
+                apiResponse(false, 'Email already exists or registration failed.', null, 409);
+            }
+
+            // Send welcome email
+            $notificationService = new NotificationService();
+            $notificationService->sendWelcomeEmail($email, $firstName, $role);
+
+            apiResponse(true, 'User registered successfully.', ['user_id' => $userId]);
+        } catch (Exception $e) {
+            apiResponse(false, 'Registration failed: ' . $e->getMessage(), null, 500);
+        }
+    }
+
+    if ($method === 'GET' && $action === 'admin-users') {
+        $user = requireAuth();
+        if ($user['role'] !== 'admin') {
+            apiResponse(false, 'Only admins can access this.', null, 403);
+        }
+
+        $page = (int)($_GET['page'] ?? 1);
+        $limit = 20;
+        $offset = ($page - 1) * $limit;
+
+        try {
+            $pdo = getDatabase();
+            $userRepo = new UserRepository($pdo);
+            
+            $users = $userRepo->getAll($limit, $offset);
+            $totalUsers = $userRepo->count();
+            $totalPages = ceil($totalUsers / $limit);
+
+            apiResponse(true, 'Users loaded.', [
+                'users' => $users,
+                'pagination' => [
+                    'page' => $page,
+                    'limit' => $limit,
+                    'total_users' => $totalUsers,
+                    'total_pages' => $totalPages,
+                ],
+            ]);
+        } catch (Exception $e) {
+            apiResponse(false, 'Failed to load users: ' . $e->getMessage(), null, 500);
+        }
+    }
+
+    if ($method === 'POST' && $action === 'delete-user') {
+        $user = requireAuth();
+        if ($user['role'] !== 'admin') {
+            apiResponse(false, 'Only admins can delete users.', null, 403);
+        }
+
+        $input = json_decode(file_get_contents('php://input') ?: '{}', true) ?? [];
+        $userId = (int)($input['user_id'] ?? 0);
+
+        if ($userId <= 0) {
+            apiResponse(false, 'Valid user ID is required.', null, 400);
+        }
+
+        try {
+            $pdo = getDatabase();
+            $userRepo = new UserRepository($pdo);
+            
+            if ($userRepo->delete($userId)) {
+                apiResponse(true, 'User deleted successfully.', null);
+            } else {
+                apiResponse(false, 'Failed to delete user.', null, 500);
+            }
+        } catch (Exception $e) {
+            apiResponse(false, 'Delete failed: ' . $e->getMessage(), null, 500);
+        }
+    }
+
+    // ========== COURSE ENDPOINTS ==========
+
+    if ($method === 'GET' && $action === 'course') {
+        $courseId = (int)($_GET['id'] ?? 0);
+        
+        if ($courseId <= 0) {
+            apiResponse(false, 'Course ID is required.', null, 400);
+        }
+
+        try {
+            $pdo = getDatabase();
+            $courseRepo = new CourseRepository($pdo);
+            
+            $course = $courseRepo->getById($courseId);
+            
+            if (!$course) {
+                apiResponse(false, 'Course not found.', null, 404);
+            }
+
+            // Get course lessons
+            $lessons = $courseRepo->getLessonsByCourse($courseId);
+
+            apiResponse(true, 'Course loaded.', [
+                'course' => $course,
+                'lessons' => $lessons ?? [],
+            ]);
+        } catch (Exception $e) {
+            apiResponse(false, 'Failed to load course: ' . $e->getMessage(), null, 500);
+        }
+    }
+
+    // ========== ASSIGNMENT & SUBMISSION ENDPOINTS ==========
+
+    if ($method === 'POST' && $action === 'submit-assignment') {
+        $user = requireAuth();
+        
+        $assignmentId = (int)($_POST['assignment_id'] ?? 0);
+        $submissionType = (string)($_POST['submission_type'] ?? 'text'); // text, file, both
+        $textContent = (string)($_POST['text_content'] ?? '');
+        $notes = (string)($_POST['notes'] ?? '');
+
+        if ($assignmentId <= 0) {
+            apiResponse(false, 'Assignment ID is required.', null, 400);
+        }
+
+        try {
+            $pdo = getDatabase();
+            $assignmentRepo = new AssignmentRepository($pdo);
+            
+            $uploadedFile = null;
+
+            // Handle file upload if present
+            if (($submissionType === 'file' || $submissionType === 'both') && !empty($_FILES['file'])) {
+                $fileHandler = new FileUploadHandler();
+                $uploadedFile = $fileHandler->uploadAssignmentFile(
+                    $_FILES['file'],
+                    $assignmentId,
+                    $user['user_id'] ?? 0
+                );
+
+                if (!$uploadedFile) {
+                    apiResponse(false, 'File upload failed.', null, 400);
+                }
+            }
+
+            // Create submission record
+            $submission = [
+                'assignment_id' => $assignmentId,
+                'student_email' => $user['email'],
+                'submission_type' => $submissionType,
+                'text_content' => $textContent,
+                'file_path' => $uploadedFile,
+                'notes' => $notes,
+                'submitted_at' => date('Y-m-d H:i:s'),
+                'status' => 'Submitted',
+            ];
+
+            $submissionId = $assignmentRepo->createSubmission($submission);
+
+            if (!$submissionId) {
+                apiResponse(false, 'Failed to create submission.', null, 500);
+            }
+
+            // Send confirmation email (student name and assignment details would be fetched in production)
+            // $notificationService = new NotificationService();
+            // $notificationService->sendSubmissionConfirmation(...);
+
+            apiResponse(true, 'Assignment submitted successfully.', ['submission_id' => $submissionId]);
+        } catch (Exception $e) {
+            apiResponse(false, 'Submission failed: ' . $e->getMessage(), null, 500);
+        }
+    }
+
+    if ($method === 'GET' && $action === 'grading-submissions') {
+        $user = requireAuth();
+        if ($user['role'] !== 'instructor' && $user['role'] !== 'admin') {
+            apiResponse(false, 'Only instructors can access this.', null, 403);
+        }
+
+        $courseId = (int)($_GET['course_id'] ?? 0);
+        $assignmentId = (int)($_GET['assignment_id'] ?? 0);
+        $status = (string)($_GET['status'] ?? ''); // pending, graded, etc.
+        $page = (int)($_GET['page'] ?? 1);
+        $limit = 20;
+        $offset = ($page - 1) * $limit;
+
+        try {
+            $pdo = getDatabase();
+            $assignmentRepo = new AssignmentRepository($pdo);
+            
+            $filter = [];
+            if ($courseId > 0) $filter['course_id'] = $courseId;
+            if ($assignmentId > 0) $filter['assignment_id'] = $assignmentId;
+            if ($status) $filter['status'] = $status;
+
+            $submissions = $assignmentRepo->getSubmissions($filter, $limit, $offset);
+            $totalCount = $assignmentRepo->getSubmissionsCount($filter);
+            $totalPages = ceil($totalCount / $limit);
+
+            apiResponse(true, 'Submissions loaded.', [
+                'submissions' => $submissions,
+                'pagination' => [
+                    'page' => $page,
+                    'limit' => $limit,
+                    'total' => $totalCount,
+                    'total_pages' => $totalPages,
+                ],
+            ]);
+        } catch (Exception $e) {
+            apiResponse(false, 'Failed to load submissions: ' . $e->getMessage(), null, 500);
+        }
+    }
+
+    if ($method === 'POST' && $action === 'grade-submission') {
+        $user = requireAuth();
+        if ($user['role'] !== 'instructor' && $user['role'] !== 'admin') {
+            apiResponse(false, 'Only instructors can grade submissions.', null, 403);
+        }
+
+        $input = json_decode(file_get_contents('php://input') ?: '{}', true) ?? [];
+        
+        $submissionId = (int)($input['submission_id'] ?? 0);
+        $score = (float)($input['score'] ?? 0);
+        $feedback = (string)($input['feedback'] ?? '');
+
+        if ($submissionId <= 0) {
+            apiResponse(false, 'Submission ID is required.', null, 400);
+        }
+
+        if ($score < 0 || $score > 100) {
+            apiResponse(false, 'Score must be between 0 and 100.', null, 400);
+        }
+
+        try {
+            $pdo = getDatabase();
+            $assignmentRepo = new AssignmentRepository($pdo);
+            
+            $success = $assignmentRepo->gradeSubmission($submissionId, $score, $feedback, $user['email']);
+
+            if (!$success) {
+                apiResponse(false, 'Failed to grade submission.', null, 500);
+            }
+
+            // Send grade notification to student (detailed student/assignment info would be fetched in production)
+            // $notificationService = new NotificationService();
+            // $notificationService->sendGradeNotification($studentEmail, $studentName, $assignmentTitle, $score, 100, $feedback);
+
+            apiResponse(true, 'Submission graded successfully.', null);
+        } catch (Exception $e) {
+            apiResponse(false, 'Grading failed: ' . $e->getMessage(), null, 500);
+        }
+    }
+
+    // ========== PAYMENT ENDPOINTS ==========
+
+    if ($method === 'POST' && $action === 'initiate-payment') {
+        $user = requireAuth();
+        
+        $input = json_decode(file_get_contents('php://input') ?: '{}', true) ?? [];
+        $courseId = (int)($input['course_id'] ?? 0);
+        $amount = (float)($input['amount'] ?? 0);
+        $paymentMethod = (string)($input['payment_method'] ?? 'stripe'); // stripe or paypal
+
+        if ($courseId <= 0 || $amount <= 0) {
+            apiResponse(false, 'Course ID and amount are required.', null, 400);
+        }
+
+        try {
+            $pdo = getDatabase();
+            $paymentService = new PaymentService($pdo);
+            
+            $payment = $paymentService->initiatePayment(
+                $user['user_id'] ?? 0,
+                $courseId,
+                $amount,
+                $paymentMethod
+            );
+
+            if (!$payment) {
+                apiResponse(false, 'Failed to initiate payment.', null, 500);
+            }
+
+            apiResponse(true, 'Payment initiated.', $payment);
+        } catch (Exception $e) {
+            apiResponse(false, 'Payment initiation failed: ' . $e->getMessage(), null, 500);
+        }
+    }
+
+    if ($method === 'GET' && $action === 'user-payments') {
+        $user = requireAuth();
+
+        try {
+            $pdo = getDatabase();
+            $paymentService = new PaymentService($pdo);
+            
+            $payments = $paymentService->getUserPayments($user['user_id'] ?? 0);
+
+            apiResponse(true, 'Payments loaded.', ['payments' => $payments]);
+        } catch (Exception $e) {
+            apiResponse(false, 'Failed to load payments: ' . $e->getMessage(), null, 500);
+        }
     }
 
     if ($method === 'POST' && $action === 'ai-chat') {

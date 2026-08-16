@@ -188,4 +188,21 @@ class CourseRepository
         
         return (int)$stmt->fetchColumn();
     }
+
+    /**
+     * Get lessons (resources) for a course
+     */
+    public function getLessonsByCourse(int $courseId): ?array
+    {
+        $stmt = $this->pdo->prepare('
+            SELECT id, project_id as course_id, title, type, file_url, description, position, is_required, created_at 
+            FROM resources 
+            WHERE project_id = ? AND deleted_at IS NULL 
+            ORDER BY position ASC
+        ');
+        $stmt->execute([$courseId]);
+        $results = $stmt->fetchAll();
+        
+        return $results ?: [];
+    }
 }
