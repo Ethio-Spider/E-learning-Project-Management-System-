@@ -16,9 +16,16 @@ require_once __DIR__ . '/classes/UserRepository.php';
 require_once __DIR__ . '/classes/FileUploadHandler.php';
 require_once __DIR__ . '/classes/NotificationService.php';
 require_once __DIR__ . '/classes/PaymentService.php';
+require_once __DIR__ . '/classes/EmailVerificationRepository.php';
+require_once __DIR__ . '/classes/PasswordResetRepository.php';
+require_once __DIR__ . '/classes/AuditLogger.php';
+require_once __DIR__ . '/classes/RateLimiter.php';
+require_once __DIR__ . '/classes/TwoFactorService.php';
+require_once __DIR__ . '/classes/ErrorMonitor.php';
 require_once __DIR__ . '/classes/Validator.php';
 
 header('Content-Type: application/json; charset=utf-8');
+header('X-API-Version: ' . config('API.version', '2.0'));
 
 function setCorsHeaders(): void
 {
@@ -117,6 +124,65 @@ function requireAuth(): array
     }
 
     return $user;
+}
+
+function getClientIp(): string
+{
+    $keys = ['HTTP_CF_CONNECTING_IP', 'HTTP_X_FORWARDED_FOR', 'HTTP_X_REAL_IP', 'REMOTE_ADDR'];
+    foreach ($keys as $key) {
+        $value = $_SERVER[$key] ?? '';
+        if (is_string($value) && $value !== '') {
+            return trim(explode(',', $value)[0]);
+        }
+    }
+
+    return '127.0.0.1';
+}
+
+function enforceRateLimit(string $identifier, string $endpoint, int $limit = 60): void
+{
+    if (!config('RATE_LIMIT.enabled', true)) {
+        return;
+    }
+
+    try {
+        $pdo = getDatabase();
+        $rateLimiter = new RateLimiter($pdo);
+        $result = $rateLimiter->allow($identifier, $endpoint, $limit, 60);
+
+        if (!$result['allowed']) {
+            apiResponse(false, 'Too many requests. Please try again later.', ['retry_after' => (int) ($result['reset_in'] ?? 60)], 429);
+        }
+    } catch (Throwable $e) {
+        $monitor = new ErrorMonitor();
+        $monitor->report($e, ['endpoint' => $endpoint, 'identifier' => $identifier]);
+    }
+}
+
+function auditLog(string $action, ?int $userId = null, ?string $entityType = null, ?int $entityId = null, array $oldValues = [], array $newValues = [], ?string $details = null): void
+{
+    if (!(config('AUDIT.enabled', true) ?? true)) {
+        return;
+    }
+
+    try {
+        $pdo = getDatabase();
+        $logger = new AuditLogger($pdo);
+        $logger->log(
+            $action,
+            $userId,
+            $entityType,
+            $entityId,
+            $oldValues,
+            $newValues,
+            getClientIp(),
+            $_SERVER['HTTP_USER_AGENT'] ?? '',
+            'success',
+            $details
+        );
+    } catch (Throwable $e) {
+        error_log('Audit log failed: ' . $e->getMessage());
+    }
 }
 
 function buildStudentDashboard(PDO $pdo, array $user): array
@@ -413,6 +479,7 @@ try {
 
     if ($method === 'POST' && $action === 'login') {
         requireCsrfToken();
+        enforceRateLimit(getClientIp(), '/login');
 
         $input = json_decode(file_get_contents('php://input') ?: '[]', true) ?? [];
         $email = strtolower(trim((string)($input['email'] ?? '')));
@@ -429,6 +496,7 @@ try {
 
         $user = $userRepo->getByEmail($email);
         if ($user === null || !$userRepo->verifyPassword($email, $password)) {
+            auditLog('login_failed', null, 'user', null, [], ['email' => $email], 'Failed login attempt');
             apiResponse(false, 'Invalid email or password.', null, 401);
         }
 
@@ -437,6 +505,7 @@ try {
         }
 
         if ($user['role'] !== $selectedRole && $selectedRole !== 'student') {
+            auditLog('login_role_mismatch', (int) $user['id'], 'user', (int) $user['id'], [], ['required_role' => $selectedRole, 'actual_role' => $user['role']], 'Role mismatch');
             apiResponse(false, 'Role mismatch for this account.', null, 403);
         }
 
@@ -451,6 +520,8 @@ try {
             'role' => $effectiveRole,
         ];
         $_SESSION['role'] = $effectiveRole;
+
+        auditLog('login_success', (int) $user['id'], 'user', (int) $user['id'], [], ['role' => $effectiveRole], 'User signed in');
 
         apiResponse(true, 'Login successful.', [
             'role' => $effectiveRole,
@@ -483,6 +554,7 @@ try {
     // ========== REGISTRATION & USER MANAGEMENT ==========
 
     if ($method === 'POST' && $action === 'register') {
+        enforceRateLimit(getClientIp(), '/register');
         $input = json_decode(file_get_contents('php://input') ?: '{}', true) ?? [];
         
         $firstName = trim((string)($input['first_name'] ?? ''));
@@ -524,14 +596,155 @@ try {
                 apiResponse(false, 'Email already exists or registration failed.', null, 409);
             }
 
-            // Send welcome email
+            $verificationRequired = (bool) config('EMAIL.verification_enabled', true);
+            if ($verificationRequired) {
+                $verificationRepo = new EmailVerificationRepository($pdo);
+                $token = $verificationRepo->createVerificationToken($userId, $email);
+                $mailer = new EmailService();
+                $mailer->sendVerificationEmail($email, $token, $firstName . ' ' . $lastName);
+            }
+
             $notificationService = new NotificationService();
             $notificationService->sendWelcomeEmail($email, $firstName, $role);
+            auditLog('user_registered', $userId, 'user', $userId, [], ['email' => $email, 'role' => $role], 'New user registered');
 
-            apiResponse(true, 'User registered successfully.', ['user_id' => $userId]);
+            apiResponse(true, 'User registered successfully.', ['user_id' => $userId, 'email_verification_required' => $verificationRequired]);
         } catch (Exception $e) {
+            $monitor = new ErrorMonitor();
+            $monitor->report($e, ['endpoint' => '/register', 'email' => $email]);
             apiResponse(false, 'Registration failed: ' . $e->getMessage(), null, 500);
         }
+    }
+
+    if ($method === 'GET' && $action === 'verify-email') {
+        $token = trim((string) ($_GET['token'] ?? ''));
+        if ($token === '') {
+            apiResponse(false, 'Verification token is required.', null, 400);
+        }
+
+        try {
+            $pdo = getDatabase();
+            $verificationRepo = new EmailVerificationRepository($pdo);
+            $verified = $verificationRepo->verifyEmail($token);
+            if (!$verified) {
+                apiResponse(false, 'Email verification failed or token expired.', null, 400);
+            }
+            apiResponse(true, 'Email verified successfully.', ['verified' => true]);
+        } catch (Exception $e) {
+            apiResponse(false, 'Verification failed: ' . $e->getMessage(), null, 500);
+        }
+    }
+
+    if ($method === 'POST' && $action === 'request-password-reset') {
+        enforceRateLimit(getClientIp(), '/password-reset');
+        $input = json_decode(file_get_contents('php://input') ?: '{}', true) ?? [];
+        $email = strtolower(trim((string) ($input['email'] ?? '')));
+        if (!Validator::email($email)) {
+            apiResponse(false, 'Valid email is required.', null, 400);
+        }
+
+        try {
+            $pdo = getDatabase();
+            $userRepo = new UserRepository($pdo);
+            $user = $userRepo->getByEmail($email);
+            if ($user !== null) {
+                $tokenRepo = new PasswordResetRepository($pdo);
+                $token = $tokenRepo->createResetToken((int) $user['id']);
+                $mailer = new EmailService();
+                $mailer->sendPasswordResetEmail($email, $token, $user['first_name']);
+                auditLog('password_reset_requested', (int) $user['id'], 'user', (int) $user['id'], [], ['email' => $email], 'Password reset requested');
+            }
+
+            apiResponse(true, 'If an account exists for this email, a reset link has been sent.', ['sent' => true]);
+        } catch (Exception $e) {
+            apiResponse(false, 'Password reset request failed: ' . $e->getMessage(), null, 500);
+        }
+    }
+
+    if ($method === 'POST' && $action === 'reset-password') {
+        enforceRateLimit(getClientIp(), '/reset-password');
+        $input = json_decode(file_get_contents('php://input') ?: '{}', true) ?? [];
+        $token = trim((string) ($input['token'] ?? ''));
+        $password = (string) ($input['password'] ?? '');
+
+        if ($token === '' || strlen($password) < 8) {
+            apiResponse(false, 'Valid reset token and password are required.', null, 400);
+        }
+
+        try {
+            $pdo = getDatabase();
+            $tokenRepo = new PasswordResetRepository($pdo);
+            $userId = $tokenRepo->validateResetToken($token);
+            if ($userId === null) {
+                apiResponse(false, 'Reset token is invalid or expired.', null, 400);
+            }
+
+            $userRepo = new UserRepository($pdo);
+            $updated = $userRepo->updatePassword($userId, $password);
+            if (!$updated) {
+                apiResponse(false, 'Password reset failed.', null, 500);
+            }
+
+            $tokenRepo->resetPassword($token, password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]));
+            auditLog('password_reset_completed', $userId, 'user', $userId, [], ['email' => $userRepo->getById($userId)['email'] ?? ''], 'Password reset completed');
+            apiResponse(true, 'Password reset successful.', ['updated' => true]);
+        } catch (Exception $e) {
+            apiResponse(false, 'Password reset failed: ' . $e->getMessage(), null, 500);
+        }
+    }
+
+    if ($method === 'POST' && $action === 'setup-2fa') {
+        $user = requireAuth();
+        $pdo = getDatabase();
+        $secret = TwoFactorService::generateSecret();
+        $stmt = $pdo->prepare('INSERT INTO two_factor_secrets (user_id, secret, method, enabled) VALUES (?, ?, ?, 0) ON DUPLICATE KEY UPDATE secret = VALUES(secret), method = VALUES(method), enabled = 0, verified_at = NULL');
+        $stmt->execute([(int) $user['id'], $secret, 'totp']);
+
+        $backupCodes = TwoFactorService::generateBackupCodes((int) config('2FA.backup_codes_count', 10));
+        $pdo->prepare('DELETE FROM backup_codes WHERE user_id = ?')->execute([(int) $user['id']]);
+        $insert = $pdo->prepare('INSERT INTO backup_codes (user_id, code) VALUES (?, ?)');
+        foreach ($backupCodes as $code) {
+            $insert->execute([(int) $user['id'], $code]);
+        }
+
+        apiResponse(true, '2FA setup started.', [
+            'secret' => $secret,
+            'qr_code_url' => TwoFactorService::getQrCodeUrl('E-Learning Platform', $user['email'], $secret),
+            'backup_codes' => $backupCodes,
+        ]);
+    }
+
+    if ($method === 'POST' && $action === 'verify-2fa') {
+        $user = requireAuth();
+        $input = json_decode(file_get_contents('php://input') ?: '{}', true) ?? [];
+        $code = trim((string) ($input['code'] ?? ''));
+        if ($code === '') {
+            apiResponse(false, 'Verification code is required.', null, 400);
+        }
+
+        $pdo = getDatabase();
+        $stmt = $pdo->prepare('SELECT secret FROM two_factor_secrets WHERE user_id = ?');
+        $stmt->execute([(int) $user['id']]);
+        $row = $stmt->fetch();
+        if (!$row) {
+            apiResponse(false, '2FA is not configured for this account.', null, 400);
+        }
+
+        $secret = (string) $row['secret'];
+        $valid = TwoFactorService::verifyCode($secret, $code);
+        if (!$valid) {
+            $backupStmt = $pdo->prepare('SELECT code FROM backup_codes WHERE user_id = ? AND used_at IS NULL AND code = ?');
+            $backupStmt->execute([(int) $user['id'], strtoupper($code)]);
+            $backupCode = $backupStmt->fetch();
+            if (!$backupCode) {
+                apiResponse(false, 'Invalid 2FA code.', null, 401);
+            }
+            $pdo->prepare('UPDATE backup_codes SET used_at = NOW() WHERE user_id = ? AND code = ?')->execute([(int) $user['id'], strtoupper($code)]);
+        }
+
+        $pdo->prepare('UPDATE two_factor_secrets SET enabled = TRUE, verified_at = NOW() WHERE user_id = ?')->execute([(int) $user['id']]);
+        auditLog('two_factor_enabled', (int) $user['id'], 'user', (int) $user['id'], [], ['method' => 'totp'], '2FA verified');
+        apiResponse(true, '2FA verification successful.', ['enabled' => true]);
     }
 
     if ($method === 'GET' && $action === 'admin-users') {
@@ -785,7 +998,7 @@ try {
             $paymentService = new PaymentService($pdo);
             
             $payment = $paymentService->initiatePayment(
-                $user['user_id'] ?? 0,
+                (int) ($user['id'] ?? 0),
                 $courseId,
                 $amount,
                 $paymentMethod
@@ -808,7 +1021,7 @@ try {
             $pdo = getDatabase();
             $paymentService = new PaymentService($pdo);
             
-            $payments = $paymentService->getUserPayments($user['user_id'] ?? 0);
+            $payments = $paymentService->getUserPayments((int) ($user['id'] ?? 0));
 
             apiResponse(true, 'Payments loaded.', ['payments' => $payments]);
         } catch (Exception $e) {

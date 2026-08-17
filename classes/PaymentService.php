@@ -21,6 +21,24 @@ class PaymentService
         $this->paypalClientId = $config['paypal_client_id'] ?? $_ENV['PAYPAL_CLIENT_ID'] ?? '';
         $this->paypalSecret = $config['paypal_secret'] ?? $_ENV['PAYPAL_SECRET'] ?? '';
     }
+
+    private function getUserEmailById(int $userId): ?string
+    {
+        $stmt = $this->pdo->prepare('SELECT email FROM users WHERE id = ? AND deleted_at IS NULL LIMIT 1');
+        $stmt->execute([$userId]);
+        $row = $stmt->fetch();
+
+        return $row['email'] ?? null;
+    }
+
+    private function getCourseTitle(int $courseId): ?string
+    {
+        $stmt = $this->pdo->prepare('SELECT title FROM projects WHERE id = ? AND deleted_at IS NULL LIMIT 1');
+        $stmt->execute([$courseId]);
+        $row = $stmt->fetch();
+
+        return $row['title'] ?? null;
+    }
     
     /**
      * Initiate payment
@@ -28,12 +46,14 @@ class PaymentService
     public function initiatePayment(int $userId, int $courseId, float $amount, string $paymentMethod = 'stripe'): array
     {
         $paymentId = $this->generatePaymentId();
-        
-        $sql = 'INSERT INTO payments (user_id, course_id, amount, payment_method, payment_id, status) 
-                VALUES (?, ?, ?, ?, ?, ?)';
+        $studentEmail = $this->getUserEmailById($userId) ?? 'unknown@example.com';
+        $courseTitle = $this->getCourseTitle($courseId) ?? 'Course';
+
+        $sql = 'INSERT INTO payments (enrollment_id, student_email, course_id, course_title, amount, currency, payment_method, transaction_id, status, payment_date)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())';
         
         $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([$userId, $courseId, $amount, $paymentMethod, $paymentId, 'Pending']);
+        $stmt->execute([0, $studentEmail, $courseId, $courseTitle, $amount, 'USD', $paymentMethod, $paymentId, 'Pending']);
         
         $localId = (int)$this->pdo->lastInsertId();
         
@@ -95,11 +115,11 @@ class PaymentService
      */
     public function confirmPayment(string $paymentId, string $transactionId): bool
     {
-        $sql = 'UPDATE payments SET status = ?, transaction_id = ?, completed_at = CURRENT_TIMESTAMP 
-                WHERE payment_id = ?';
+        $sql = 'UPDATE payments SET status = ?, transaction_id = ?, updated_at = CURRENT_TIMESTAMP 
+                WHERE transaction_id = ? OR payment_id = ?';
         
         $stmt = $this->pdo->prepare($sql);
-        $result = $stmt->execute(['Completed', $transactionId, $paymentId]);
+        $result = $stmt->execute(['Completed', $transactionId, $paymentId, $paymentId]);
         
         return $result && $stmt->rowCount() > 0;
     }
@@ -109,8 +129,8 @@ class PaymentService
      */
     public function getPaymentStatus(string $paymentId): ?array
     {
-        $stmt = $this->pdo->prepare('SELECT * FROM payments WHERE payment_id = ?');
-        $stmt->execute([$paymentId]);
+        $stmt = $this->pdo->prepare('SELECT * FROM payments WHERE transaction_id = ? OR payment_id = ? LIMIT 1');
+        $stmt->execute([$paymentId, $paymentId]);
         $result = $stmt->fetch();
         
         return $result ?: null;
@@ -121,10 +141,10 @@ class PaymentService
      */
     public function cancelPayment(string $paymentId, string $reason = ''): bool
     {
-        $sql = 'UPDATE payments SET status = ?, refund_reason = ? WHERE payment_id = ?';
+        $sql = 'UPDATE payments SET status = ?, refund_reason = ? WHERE transaction_id = ? OR payment_id = ?';
         
         $stmt = $this->pdo->prepare($sql);
-        $result = $stmt->execute(['Cancelled', $reason, $paymentId]);
+        $result = $stmt->execute(['Cancelled', $reason, $paymentId, $paymentId]);
         
         return $result && $stmt->rowCount() > 0;
     }
@@ -134,11 +154,11 @@ class PaymentService
      */
     public function processRefund(string $paymentId, string $reason = ''): bool
     {
-        $sql = 'UPDATE payments SET status = ?, refunded_at = CURRENT_TIMESTAMP, refund_reason = ? 
-                WHERE payment_id = ? AND status = ?';
+        $sql = 'UPDATE payments SET status = ?, refund_date = CURRENT_TIMESTAMP, refund_reason = ? 
+                WHERE (transaction_id = ? OR payment_id = ?) AND status = ?';
         
         $stmt = $this->pdo->prepare($sql);
-        $result = $stmt->execute(['Refunded', $reason, $paymentId, 'Completed']);
+        $result = $stmt->execute(['Refunded', $reason, $paymentId, $paymentId, 'Completed']);
         
         return $result && $stmt->rowCount() > 0;
     }
@@ -148,15 +168,20 @@ class PaymentService
      */
     public function getUserPayments(int $userId, int $limit = 50): array
     {
+        $userEmail = $this->getUserEmailById($userId);
+        if ($userEmail === null) {
+            return [];
+        }
+
         $sql = 'SELECT p.*, c.title as course_title 
                 FROM payments p 
                 JOIN projects c ON p.course_id = c.id 
-                WHERE p.user_id = ? 
+                WHERE p.student_email = ?
                 ORDER BY p.created_at DESC 
                 LIMIT ?';
         
         $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([$userId, $limit]);
+        $stmt->execute([$userEmail, $limit]);
         
         return $stmt->fetchAll();
     }

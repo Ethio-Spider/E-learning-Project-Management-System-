@@ -22,7 +22,10 @@ class EmailService
             'smtp_user' => config('EMAIL.smtp_user'),
             'smtp_password' => config('EMAIL.smtp_password'),
         ];
-        $this->logger = new Logger();
+        $this->logger = new Logger(
+            config('LOGGING.log_dir', __DIR__ . '/../logs/'),
+            config('LOGGING.log_level', 'INFO')
+        );
     }
 
     public function sendVerificationEmail(string $email, string $token, string $userName): bool
