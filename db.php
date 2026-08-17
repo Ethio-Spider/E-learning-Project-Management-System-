@@ -45,8 +45,9 @@ function getDatabase(): PDO
         $pdo = new PDO($dsn, $db['user'], $db['password'], $options);
         
         // Set timezone
-        $pdo->query("SET time_zone = '" . $pdo->quote($db['timezone']) . "'");
-        
+        //$pdo->query("SET time_zone = '" . $pdo->quote($db['timezone']) . "'");
+        //$pdo->exec("SET time_zone = " . $pdo->quote($db['timezone']));
+        $pdo->exec("SET time_zone = '+00:00'");
         return $pdo;
     } catch (PDOException $e) {
         error_log('Database connection failed: ' . $e->getMessage());

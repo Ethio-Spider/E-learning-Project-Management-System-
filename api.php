@@ -18,6 +18,8 @@ require_once __DIR__ . '/classes/NotificationService.php';
 require_once __DIR__ . '/classes/PaymentService.php';
 require_once __DIR__ . '/classes/EmailVerificationRepository.php';
 require_once __DIR__ . '/classes/PasswordResetRepository.php';
+require_once __DIR__ . '/classes/Logger.php';
+require_once __DIR__ . '/classes/EmailService.php';
 require_once __DIR__ . '/classes/AuditLogger.php';
 require_once __DIR__ . '/classes/RateLimiter.php';
 require_once __DIR__ . '/classes/TwoFactorService.php';
