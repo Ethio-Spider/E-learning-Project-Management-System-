@@ -19,9 +19,22 @@ require_once __DIR__ . '/classes/PaymentService.php';
 require_once __DIR__ . '/classes/Validator.php';
 
 header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Accept, Authorization');
+
+function setCorsHeaders(): void
+{
+    $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+    $allowedOrigins = config('SECURITY.cors_origins', []);
+    $allowedOrigins = is_array($allowedOrigins) ? $allowedOrigins : [];
+
+    if ($origin !== '' && ($allowedOrigins === [] || in_array('*', $allowedOrigins, true) || in_array($origin, $allowedOrigins, true))) {
+        header('Access-Control-Allow-Origin: ' . ($origin !== '' ? $origin : 'null'));
+        header('Access-Control-Allow-Credentials: true');
+        header('Vary: Origin');
+    }
+
+    header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
+    header('Access-Control-Allow-Headers: Content-Type, Accept, Authorization, X-CSRF-Token');
+}
 
 session_start([
     'cookie_httponly' => true,
@@ -29,9 +42,50 @@ session_start([
     'use_strict_mode' => true,
 ]);
 
+setCorsHeaders();
+
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(204);
     exit;
+}
+
+function getCsrfToken(): string
+{
+    if (empty($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+
+    return (string) $_SESSION['csrf_token'];
+}
+
+function requireCsrfToken(): void
+{
+    if (!config('SECURITY.enable_csrf', true)) {
+        return;
+    }
+
+    if ($_SERVER['REQUEST_METHOD'] === 'GET' || $_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+        return;
+    }
+
+    $token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? null;
+    if ($token === null && isset($_POST['_csrf'])) {
+        $token = (string) $_POST['_csrf'];
+    }
+
+    if ($token === null) {
+        $raw = file_get_contents('php://input');
+        if (is_string($raw) && $raw !== '') {
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded) && array_key_exists('_csrf', $decoded)) {
+                $token = (string) $decoded['_csrf'];
+            }
+        }
+    }
+
+    if (!is_string($token) || !hash_equals(getCsrfToken(), $token)) {
+        apiResponse(false, 'Invalid or missing CSRF token.', null, 419);
+    }
 }
 
 function apiResponse(bool $success, string $message, mixed $data = null, int $statusCode = 200): never
@@ -43,15 +97,6 @@ function apiResponse(bool $success, string $message, mixed $data = null, int $st
         'data' => $data,
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
-}
-
-function getDemoCredentials(): array
-{
-    return [
-        'student' => ['email' => 'student@learnflow.app', 'password' => 'student123'],
-        'instructor' => ['email' => 'instructor@learnflow.app', 'password' => 'instructor123'],
-        'admin' => ['email' => 'admin@learnflow.app', 'password' => 'admin123'],
-    ];
 }
 
 function currentUser(): ?array
@@ -74,126 +119,301 @@ function requireAuth(): array
     return $user;
 }
 
-function getMockData(): array
+function buildStudentDashboard(PDO $pdo, array $user): array
 {
+    $email = strtolower((string)($user['email'] ?? ''));
+    if ($email === '') {
+        return [
+            'stats' => [],
+            'courses' => [],
+            'assignments' => [],
+            'notifications' => [],
+            'schedule' => [],
+            'forum' => [],
+            'certificates' => [],
+            'videoLessons' => [],
+            'quizzes' => [],
+            'completionTracking' => ['progress' => 0, 'nextMilestone' => 'Set a learning goal', 'streak' => 0],
+            'analytics' => ['summary' => ['completionRate' => 0, 'weeklyStudyHours' => 0, 'engagement' => 0, 'retention' => 0, 'streak' => 0, 'avgScore' => 0], 'focusAreas' => []],
+            'reviews' => [],
+            'badges' => [],
+            'payments' => [],
+        ];
+    }
+
+    $enrollmentsStmt = $pdo->prepare(
+        'SELECT e.id, e.project_id, e.student_name, e.email, e.status, e.progress, e.enrollment_date,
+                p.title AS course_title, p.category, p.level, p.instructor, p.duration
+         FROM enrollments e
+         JOIN projects p ON p.id = e.project_id
+         WHERE e.email = :email AND e.deleted_at IS NULL AND p.deleted_at IS NULL
+         ORDER BY e.enrollment_date DESC'
+    );
+    $enrollmentsStmt->execute([':email' => $email]);
+    $enrollments = $enrollmentsStmt->fetchAll();
+
+    $courseRows = array_map(static function (array $row): array {
+        return [
+            'id' => (int) $row['project_id'],
+            'title' => $row['course_title'],
+            'category' => $row['category'],
+            'level' => $row['level'],
+            'progress' => (int) round((float) ($row['progress'] ?? 0)),
+            'instructor' => $row['instructor'],
+            'nextLesson' => 'Course progress review',
+            'status' => $row['status'],
+        ];
+    }, $enrollments);
+
+    $assignmentStmt = $pdo->prepare(
+        'SELECT a.id, a.title, p.title AS course, a.due_date AS due, a.max_score, a.description,
+                CASE WHEN s.id IS NOT NULL THEN "Submitted" ELSE "Pending" END AS status
+         FROM enrollments e
+         JOIN assignments a ON a.project_id = e.project_id
+         JOIN projects p ON p.id = a.project_id
+         LEFT JOIN submissions s ON s.assignment_id = a.id AND s.student_email = :email AND s.deleted_at IS NULL
+         WHERE e.email = :email AND e.deleted_at IS NULL AND a.deleted_at IS NULL
+         ORDER BY a.due_date ASC
+         LIMIT 10'
+    );
+    $assignmentStmt->execute([':email' => $email]);
+    $assignments = $assignmentStmt->fetchAll();
+
+    $certificateStmt = $pdo->prepare(
+        'SELECT c.id, c.course_title AS name, c.status
+         FROM certificates c
+         JOIN enrollments e ON e.id = c.enrollment_id
+         WHERE e.email = :email AND c.deleted_at IS NULL
+         ORDER BY c.issued_date DESC'
+    );
+    $certificateStmt->execute([':email' => $email]);
+    $certificates = $certificateStmt->fetchAll();
+
+    $activityStmt = $pdo->prepare(
+        'SELECT al.id, al.action, al.details, al.created_at
+         FROM activity_logs al
+         JOIN enrollments e ON e.id = al.enrollment_id
+         WHERE e.email = :email AND al.created_at IS NOT NULL
+         ORDER BY al.created_at DESC
+         LIMIT 5'
+    );
+    $activityStmt->execute([':email' => $email]);
+    $notifications = array_map(static function (array $row): array {
+        return [
+            'id' => (int) $row['id'],
+            'text' => trim((string) ($row['details'] ?: $row['action'])),
+            'time' => date('M j, Y', strtotime((string) $row['created_at'])),
+        ];
+    }, $activityStmt->fetchAll());
+
+    $avgProgress = 0.0;
+    if (!empty($enrollments)) {
+        $avgProgress = round(array_sum(array_map(static fn (array $row): float => (float) ($row['progress'] ?? 0), $enrollments)) / count($enrollments), 0);
+    }
+
+    $upcomingAssignments = array_map(static function (array $row): array {
+        return [
+            'day' => date('D', strtotime((string) $row['due'])),
+            'title' => $row['title'],
+            'time' => date('h:i A', strtotime((string) $row['due'])),
+            'type' => 'Assignment',
+        ];
+    }, array_slice($assignments, 0, 3));
+
+    $dueAssignments = $pdo->prepare(
+        'SELECT COUNT(*) FROM assignments a
+         JOIN enrollments e ON e.project_id = a.project_id
+         WHERE e.email = :email AND a.deleted_at IS NULL AND a.due_date >= NOW() AND a.due_date <= DATE_ADD(NOW(), INTERVAL 7 DAY)'
+    );
+    $dueAssignments->execute([':email' => $email]);
+    $dueCount = (int) $dueAssignments->fetchColumn();
+
+    $paymentStmt = $pdo->prepare('SELECT id, course_title AS plan, status, amount FROM payments WHERE student_email = :email ORDER BY created_at DESC LIMIT 5');
+    $paymentStmt->execute([':email' => $email]);
+    $payments = $paymentStmt->fetchAll();
+
+    $videoLessons = [
+        ['id' => 1, 'title' => 'Module kickoff video', 'duration' => '11:42', 'course' => 'Web Fundamentals'],
+        ['id' => 2, 'title' => 'Live code walkthrough', 'duration' => '08:19', 'course' => 'PHP & Database Systems'],
+    ];
+
+    $quizzes = [
+        ['id' => 1, 'title' => 'Progress checkpoint', 'score' => 92, 'status' => 'Passed'],
+        ['id' => 2, 'title' => 'Concept review', 'score' => 78, 'status' => 'Needs review'],
+    ];
+
+    $badgeSet = [
+        ['name' => 'Course Starter', 'icon' => '🏅', 'color' => 'gold'],
+        ['name' => 'Consistent Learner', 'icon' => '🔥', 'color' => 'purple'],
+        ['name' => 'Project Driver', 'icon' => '🚀', 'color' => 'cyan'],
+    ];
+
+    $reviews = [
+        ['title' => 'Web Fundamentals', 'rating' => 5, 'summary' => 'Excellent pacing and practical labs.'],
+        ['title' => 'Backend Systems', 'rating' => 4, 'summary' => 'Strong examples and real-world architecture patterns.'],
+    ];
+
     return [
-        'student' => [
+        'stats' => [
+            ['label' => 'Enrolled courses', 'value' => (string) count($enrollments), 'trend' => count($enrollments) > 0 ? '+1 this cycle' : 'No active enrollment'],
+            ['label' => 'Completion rate', 'value' => $avgProgress . '%', 'trend' => $avgProgress >= 80 ? '+8% this month' : 'Keep moving'],
+            ['label' => 'Assignments due', 'value' => (string) $dueCount, 'trend' => $dueCount > 0 ? 'Next 7 days' : 'On track'],
+            ['label' => 'Certificates', 'value' => (string) count($certificates), 'trend' => count($certificates) > 0 ? 'Ready to view' : 'No certificates'],
+        ],
+        'courses' => $courseRows,
+        'assignments' => array_map(static function (array $row): array {
+            return [
+                'id' => (int) $row['id'],
+                'title' => $row['title'],
+                'course' => $row['course'],
+                'due' => date('Y-m-d', strtotime((string) $row['due'])),
+                'status' => $row['status'],
+                'description' => $row['description'] ?? 'Complete this assignment and submit your response before the deadline.',
+            ];
+        }, $assignments),
+        'notifications' => !empty($notifications) ? $notifications : [
+            ['id' => 0, 'text' => 'No recent activity yet.', 'time' => 'Just now'],
+        ],
+        'schedule' => $upcomingAssignments,
+        'forum' => [
+            ['topic' => 'How should a learner document peer feedback?', 'author' => 'Amina • 2h ago', 'replies' => 21],
+            ['topic' => 'Best templates for sprint planning', 'author' => 'Chris • Today', 'replies' => 16],
+        ],
+        'certificates' => array_map(static function (array $row): array {
+            return ['id' => (int) $row['id'], 'name' => $row['name'], 'status' => $row['status'], 'verification_code' => 'SKG-' . (string) ((int) $row['id'] + 1000)];
+        }, $certificates),
+        'videoLessons' => $videoLessons,
+        'quizzes' => $quizzes,
+        'completionTracking' => [
+            'progress' => $avgProgress,
+            'nextMilestone' => $dueCount > 0 ? 'Submit the next assignment' : 'Review your roadmap',
+            'streak' => max(3, (int) round($avgProgress / 10)),
+        ],
+        'analytics' => [
+            'summary' => [
+                'completionRate' => $avgProgress,
+                'weeklyStudyHours' => (int) round($avgProgress / 10),
+                'engagement' => max(0, min(100, $avgProgress + 10)),
+                'retention' => max(0, min(100, $avgProgress + 5)),
+                'streak' => max(3, (int) round($avgProgress / 10)),
+                'avgScore' => max(60, min(100, $avgProgress + 10)),
+            ],
+            'focusAreas' => ['Progress', 'Assignments', 'Milestones', 'Revision'],
+        ],
+        'reviews' => $reviews,
+        'badges' => $badgeSet,
+        'payments' => $payments,
+    ];
+}
+
+function buildDashboardData(PDO $pdo, array $user): array
+{
+    $role = strtolower((string) ($user['role'] ?? 'student'));
+
+    if ($role === 'admin') {
+        $userCount = (int) $pdo->query('SELECT COUNT(*) FROM users WHERE deleted_at IS NULL')->fetchColumn();
+        $enrollmentCount = (int) $pdo->query('SELECT COUNT(*) FROM enrollments WHERE deleted_at IS NULL')->fetchColumn();
+        $assignmentCount = (int) $pdo->query('SELECT COUNT(*) FROM assignments WHERE deleted_at IS NULL')->fetchColumn();
+        $certificateCount = (int) $pdo->query('SELECT COUNT(*) FROM certificates WHERE deleted_at IS NULL')->fetchColumn();
+
+        return [
             'stats' => [
-                ['label' => 'Enrolled courses', 'value' => '7', 'trend' => '+2 this month'],
-                ['label' => 'Completion rate', 'value' => '84%', 'trend' => '+9%'],
-                ['label' => 'Assignments due', 'value' => '3', 'trend' => '1 urgent'],
-                ['label' => 'Certificates', 'value' => '2', 'trend' => '1 ready'],
+                ['label' => 'Total learners', 'value' => (string) $userCount, 'trend' => '+1 this cycle'],
+                ['label' => 'Enrollments', 'value' => (string) $enrollmentCount, 'trend' => 'Live'],
+                ['label' => 'Assignments', 'value' => (string) $assignmentCount, 'trend' => 'Tracked'],
+                ['label' => 'Certificates', 'value' => (string) $certificateCount, 'trend' => 'Issued'],
             ],
-            'courses' => [
-                ['id' => 101, 'title' => 'Product Design Bootcamp', 'category' => 'UX', 'level' => 'Intermediate', 'progress' => 76, 'instructor' => 'Ari Chen', 'nextLesson' => 'Prototype testing'],
-                ['id' => 102, 'title' => 'AI for Everyday Learning', 'category' => 'AI', 'level' => 'Beginner', 'progress' => 61, 'instructor' => 'Nina Patel', 'nextLesson' => 'Prompt engineering'],
-                ['id' => 103, 'title' => 'Full-Stack Launch Lab', 'category' => 'Development', 'level' => 'Advanced', 'progress' => 48, 'instructor' => 'Joel Brooks', 'nextLesson' => 'Deployment pipeline'],
-            ],
-            'assignments' => [
-                ['id' => 1, 'title' => 'Landing page critique', 'course' => 'Product Design Bootcamp', 'due' => '2026-08-18', 'status' => 'In progress'],
-                ['id' => 2, 'title' => 'AI assistant prompt pack', 'course' => 'AI for Everyday Learning', 'due' => '2026-08-21', 'status' => 'Pending'],
-                ['id' => 3, 'title' => 'API integration task', 'course' => 'Full-Stack Launch Lab', 'due' => '2026-08-23', 'status' => 'Review'],
-            ],
-            'schedule' => [
-                ['day' => 'Mon', 'title' => 'Live Q&A', 'time' => '10:00 AM', 'type' => 'Mentor session'],
-                ['day' => 'Tue', 'title' => 'Sprint review', 'time' => '2:30 PM', 'type' => 'Project milestone'],
-                ['day' => 'Thu', 'title' => 'Capstone clinic', 'time' => '11:00 AM', 'type' => 'Workshop'],
-            ],
+            'courses' => [],
+            'assignments' => [],
             'notifications' => [
-                ['id' => 1, 'text' => 'Feedback posted on your product critique submission', 'time' => '8 mins ago'],
-                ['id' => 2, 'text' => 'New webinar: AI learning assistant best practices', 'time' => '1 hour ago'],
-                ['id' => 3, 'text' => 'Classroom milestone unlocked: UX research sprint', 'time' => '2 hours ago'],
+                ['id' => 1, 'text' => 'Student cohort progress has improved by 8% this week.', 'time' => '10 mins ago'],
+                ['id' => 2, 'text' => 'Two new course reviews have been submitted.', 'time' => '2 hours ago'],
             ],
+            'schedule' => [],
             'forum' => [
-                ['id' => 1, 'topic' => 'How do you structure a research plan?', 'replies' => 18, 'author' => 'Maya'],
-                ['id' => 2, 'topic' => 'Best way to document project retrospectives?', 'replies' => 9, 'author' => 'Sam'],
+                ['topic' => 'Instructor office hours schedule', 'author' => 'Admin • Today', 'replies' => 12],
             ],
             'certificates' => [
-                ['id' => 1, 'name' => 'UI Foundations Certificate', 'status' => 'Issued'],
-                ['id' => 2, 'name' => 'Prompt Design Fundamentals', 'status' => 'In review'],
+                ['id' => 1, 'name' => 'Platform Excellence', 'status' => 'Verified', 'verification_code' => 'ADMIN-2048'],
             ],
-            'analytics' => [
-                'weeklyMinutes' => 480,
-                'streak' => 12,
-                'learningScore' => 91,
-                'focusAreas' => ['Product thinking', 'Frontend', 'Research'],
+            'videoLessons' => [
+                ['id' => 1, 'title' => 'Admin training walkthrough', 'duration' => '14:32', 'course' => 'Operations'],
             ],
-        ],
-        'instructor' => [
+            'quizzes' => [
+                ['id' => 1, 'title' => 'Retention benchmark', 'score' => 96, 'status' => 'Excellent'],
+            ],
+            'completionTracking' => ['progress' => 88, 'nextMilestone' => 'Review program health report', 'streak' => 9],
+            'analytics' => ['summary' => ['completionRate' => 88, 'weeklyStudyHours' => 16, 'engagement' => 92, 'retention' => 90, 'streak' => 9, 'avgScore' => 96], 'focusAreas' => ['Retention', 'Operations', 'Growth', 'Support']],
+            'reviews' => [
+                ['title' => 'Operations Playbook', 'rating' => 5, 'summary' => 'Clear process and measurable outcomes.'],
+            ],
+            'badges' => [
+                ['name' => 'Program Lead', 'icon' => '🏆', 'color' => 'gold'],
+                ['name' => 'Insights Expert', 'icon' => '📈', 'color' => 'cyan'],
+            ],
+            'payments' => [],
+        ];
+    }
+
+    if ($role === 'instructor') {
+        $projectCount = (int) $pdo->query('SELECT COUNT(*) FROM projects WHERE deleted_at IS NULL')->fetchColumn();
+        $assignmentCount = (int) $pdo->query('SELECT COUNT(*) FROM assignments WHERE deleted_at IS NULL')->fetchColumn();
+        $submissionCount = (int) $pdo->query('SELECT COUNT(*) FROM submissions WHERE deleted_at IS NULL')->fetchColumn();
+
+        return [
             'stats' => [
-                ['label' => 'Active cohorts', 'value' => '5', 'trend' => '+1'],
-                ['label' => 'Assignments graded', 'value' => '128', 'trend' => '+18%'],
-                ['label' => 'Students at-risk', 'value' => '7', 'trend' => 'down 2'],
-                ['label' => 'Avg. satisfaction', 'value' => '4.8/5', 'trend' => '+0.2'],
+                ['label' => 'Active courses', 'value' => (string) $projectCount, 'trend' => 'Live'],
+                ['label' => 'Assignments', 'value' => (string) $assignmentCount, 'trend' => 'Published'],
+                ['label' => 'Submissions', 'value' => (string) $submissionCount, 'trend' => 'Pending review'],
+                ['label' => 'Students', 'value' => (string) $pdo->query('SELECT COUNT(*) FROM enrollments WHERE deleted_at IS NULL')->fetchColumn(), 'trend' => 'Tracked'],
             ],
-            'courses' => [
-                ['id' => 201, 'title' => 'Product Design Bootcamp', 'students' => 42, 'completion' => 72, 'status' => 'Live'],
-                ['id' => 202, 'title' => 'AI for Everyday Learning', 'students' => 31, 'completion' => 65, 'status' => 'Live'],
-            ],
-            'assignments' => [
-                ['id' => 12, 'title' => 'Prototype critique sheets', 'course' => 'Product Design Bootcamp', 'submitted' => 18, 'pending' => 7],
-                ['id' => 13, 'title' => 'Prompt pack submission', 'course' => 'AI for Everyday Learning', 'submitted' => 21, 'pending' => 4],
-            ],
-            'schedule' => [
-                ['day' => 'Wed', 'title' => 'Team office hours', 'time' => '3:00 PM', 'type' => 'Mentoring'],
-                ['day' => 'Fri', 'title' => 'Portfolio review', 'time' => '9:30 AM', 'type' => 'Feedback session'],
-            ],
+            'courses' => [],
+            'assignments' => [],
             'notifications' => [
-                ['id' => 1, 'text' => 'Two students requested deadline extension', 'time' => '20 mins ago'],
-                ['id' => 2, 'text' => 'New discussion thread: rubric clarity', 'time' => '1 day ago'],
+                ['id' => 1, 'text' => 'A new learner has completed the onboarding module.', 'time' => '15 mins ago'],
+                ['id' => 2, 'text' => 'Three students need feedback on quiz retakes.', 'time' => '1 hour ago'],
             ],
+            'schedule' => [],
             'forum' => [
-                ['id' => 1, 'topic' => 'Assignment rubric expectations', 'replies' => 27, 'author' => 'Instructor team'],
-                ['id' => 2, 'topic' => 'Portfolio presentation tips', 'replies' => 14, 'author' => 'Mentor lab'],
+                ['topic' => 'Peer mentoring for project reviews', 'author' => 'Instructor • 3h ago', 'replies' => 18],
             ],
-            'analytics' => [
-                'weeklyMinutes' => 610,
-                'engagement' => 88,
-                'completionTrend' => '+7%',
-                'focusAreas' => ['Engagement', 'Assessment', 'Retention'],
+            'certificates' => [
+                ['id' => 1, 'name' => 'Mentor Certification', 'status' => 'Verified', 'verification_code' => 'INST-8801'],
             ],
-        ],
-        'admin' => [
-            'stats' => [
-                ['label' => 'Total learners', 'value' => '1,284', 'trend' => '+96'],
-                ['label' => 'Revenue', 'value' => '$48.2K', 'trend' => '+12.5%'],
-                ['label' => 'Open support tickets', 'value' => '19', 'trend' => 'down 4'],
-                ['label' => 'Active cohorts', 'value' => '12', 'trend' => '+2'],
+            'videoLessons' => [
+                ['id' => 1, 'title' => 'Instructor commentary', 'duration' => '09:10', 'course' => 'Teaching Lab'],
             ],
-            'courses' => [
-                ['id' => 301, 'title' => 'Leadership Sprint', 'status' => 'Published', 'revenue' => '$12.3K'],
-                ['id' => 302, 'title' => 'Analytics Foundations', 'status' => 'Draft', 'revenue' => '$7.1K'],
-                ['id' => 303, 'title' => 'Career Readiness Lab', 'status' => 'Published', 'revenue' => '$9.8K'],
+            'quizzes' => [
+                ['id' => 1, 'title' => 'Assessment readiness', 'score' => 89, 'status' => 'Strong'],
             ],
-            'assignments' => [
-                ['id' => 20, 'title' => 'Platform adoption review', 'course' => 'Leadership Sprint', 'owner' => 'Ops Team', 'priority' => 'High'],
-                ['id' => 21, 'title' => 'Payment report checks', 'course' => 'All programs', 'owner' => 'Finance', 'priority' => 'Medium'],
+            'completionTracking' => ['progress' => 82, 'nextMilestone' => 'Review learner submissions', 'streak' => 7],
+            'analytics' => ['summary' => ['completionRate' => 82, 'weeklyStudyHours' => 14, 'engagement' => 88, 'retention' => 86, 'streak' => 7, 'avgScore' => 89], 'focusAreas' => ['Mentoring', 'Feedback', 'Planning', 'Delivery']],
+            'reviews' => [
+                ['title' => 'Teaching Lab', 'rating' => 5, 'summary' => 'Helpful review cycles and clear learner support.'],
             ],
-            'notifications' => [
-                ['id' => 1, 'text' => 'New instructor onboarding tasks are ready', 'time' => '10 mins ago'],
-                ['id' => 2, 'text' => 'Security update approved for course platform', 'time' => '4 hours ago'],
+            'badges' => [
+                ['name' => 'Mentor', 'icon' => '🎓', 'color' => 'gold'],
+                ['name' => 'Collaborator', 'icon' => '🤝', 'color' => 'purple'],
             ],
-            'forum' => [
-                ['id' => 1, 'topic' => 'Launch checklist for Q4 cohort', 'replies' => 34, 'author' => 'Program Office'],
-                ['id' => 2, 'topic' => 'Payment policy clarification', 'replies' => 12, 'author' => 'Finance'],
-            ],
-            'analytics' => [
-                'weeklyMinutes' => 920,
-                'engagement' => 91,
-                'retention' => 89,
-                'focusAreas' => ['Growth', 'Retention', 'Operations'],
-            ],
-        ],
-    ];
+            'payments' => [],
+        ];
+    }
+
+    return buildStudentDashboard($pdo, $user);
 }
 
 $method = $_SERVER['REQUEST_METHOD'];
 $action = strtolower((string)($_GET['action'] ?? 'dashboard'));
 $role = strtolower((string)($_GET['role'] ?? 'student'));
-$payload = getMockData();
 
 try {
+    if ($method === 'GET' && $action === 'csrf-token') {
+        apiResponse(true, 'CSRF token ready.', ['csrf_token' => getCsrfToken()]);
+    }
+
     if ($method === 'POST' && $action === 'login') {
+        requireCsrfToken();
+
         $input = json_decode(file_get_contents('php://input') ?: '[]', true) ?? [];
         $email = strtolower(trim((string)($input['email'] ?? '')));
         $password = (string)($input['password'] ?? '');
@@ -203,27 +423,31 @@ try {
             apiResponse(false, 'Email and password are required.', null, 400);
         }
 
-        $credentials = getDemoCredentials();
-        $matchedRole = null;
+        $pdo = getDatabase();
+        $userRepo = new UserRepository($pdo);
+        $userRepo->ensureDemoUsers();
 
-        foreach ($credentials as $credentialRole => $account) {
-            if (strtolower($account['email']) === $email && $account['password'] === $password) {
-                $matchedRole = $credentialRole;
-                break;
-            }
-        }
-
-        if ($matchedRole === null) {
+        $user = $userRepo->getByEmail($email);
+        if ($user === null || !$userRepo->verifyPassword($email, $password)) {
             apiResponse(false, 'Invalid email or password.', null, 401);
         }
 
-        $effectiveRole = in_array($selectedRole, ['student', 'instructor', 'admin'], true) && $matchedRole === $selectedRole
-            ? $selectedRole
-            : $matchedRole;
+        if ($selectedRole !== 'student' && $selectedRole !== 'instructor' && $selectedRole !== 'admin') {
+            $selectedRole = $user['role'];
+        }
+
+        if ($user['role'] !== $selectedRole && $selectedRole !== 'student') {
+            apiResponse(false, 'Role mismatch for this account.', null, 403);
+        }
+
+        $effectiveRole = $user['role'];
 
         $_SESSION['user'] = [
-            'name' => ucfirst($effectiveRole) . ' User',
-            'email' => $email,
+            'id' => (int) $user['id'],
+            'first_name' => $user['first_name'],
+            'last_name' => $user['last_name'],
+            'name' => trim(($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? '')) ?: ucfirst($effectiveRole) . ' User',
+            'email' => $user['email'],
             'role' => $effectiveRole,
         ];
         $_SESSION['role'] = $effectiveRole;
@@ -231,7 +455,8 @@ try {
         apiResponse(true, 'Login successful.', [
             'role' => $effectiveRole,
             'user' => $_SESSION['user'],
-            'dashboard' => $payload[$effectiveRole] ?? $payload['student'],
+            'dashboard' => buildDashboardData($pdo, $_SESSION['user']),
+            'csrf_token' => getCsrfToken(),
         ]);
     }
 
@@ -244,10 +469,12 @@ try {
         apiResponse(true, 'Session loaded.', [
             'user' => $user,
             'role' => $user['role'] ?? 'student',
+            'csrf_token' => getCsrfToken(),
         ]);
     }
 
     if ($method === 'POST' && $action === 'logout') {
+        requireCsrfToken();
         session_unset();
         session_destroy();
         apiResponse(true, 'Logged out successfully.', null);
@@ -280,11 +507,18 @@ try {
             apiResponse(false, 'Invalid role. Must be student, instructor, or admin.', null, 400);
         }
 
+        if ($role === 'admin' && (!currentUser() || currentUser()['role'] !== 'admin')) {
+            apiResponse(false, 'Public registration cannot create admin accounts.', null, 403);
+        }
+
+        requireCsrfToken();
+
         try {
             $pdo = getDatabase();
             $userRepo = new UserRepository($pdo);
-            
-            $userId = $userRepo->create($firstName, $lastName, $email, $password, $role);
+            $allowAdmin = currentUser() !== null && currentUser()['role'] === 'admin';
+
+            $userId = $userRepo->create($firstName, $lastName, $email, $password, $role, $allowAdmin);
             
             if (!$userId) {
                 apiResponse(false, 'Email already exists or registration failed.', null, 409);
@@ -994,10 +1228,13 @@ try {
 
     if ($method === 'GET' && ($action === 'dashboard' || $action === '')) {
         $user = requireAuth();
-        $sessionRole = $user['role'] ?? 'student';
+        $sessionRole = strtolower((string) ($user['role'] ?? 'student'));
         $role = in_array($role, ['student', 'instructor', 'admin'], true) ? $role : $sessionRole;
         $effectiveRole = in_array($role, ['student', 'instructor', 'admin'], true) ? $role : $sessionRole;
-        apiResponse(true, 'Dashboard loaded.', $payload[$effectiveRole] ?? $payload['student']);
+        $user['role'] = $effectiveRole;
+
+        $pdo = getDatabase();
+        apiResponse(true, 'Dashboard loaded.', buildDashboardData($pdo, $user));
     }
 
     if ($method === 'GET' && $action === 'assignments') {

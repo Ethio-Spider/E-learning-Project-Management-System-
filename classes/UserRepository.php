@@ -41,7 +41,7 @@ class UserRepository
     /**
      * Create a new user
      */
-    public function create(string $firstName, string $lastName, string $email, string $password, string $role = 'student'): int
+    public function create(string $firstName, string $lastName, string $email, string $password, string $role = 'student', bool $allowAdmin = false): int
     {
         // Check if user exists
         if ($this->getByEmail($email)) {
@@ -53,6 +53,10 @@ class UserRepository
         if (!in_array($role, $validRoles, true)) {
             throw new Exception('Invalid role');
         }
+
+        if ($role === 'admin' && !$allowAdmin) {
+            throw new Exception('Admin accounts can only be created by an administrator.');
+        }
         
         $hashedPassword = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
         
@@ -63,6 +67,23 @@ class UserRepository
         $stmt->execute([$firstName, $lastName, $email, $hashedPassword, $role]);
         
         return (int)$this->pdo->lastInsertId();
+    }
+
+    public function ensureDemoUsers(): void
+    {
+        $seedUsers = [
+            ['student', 'Student', 'User', 'student@learnflow.app', 'student123'],
+            ['instructor', 'Instructor', 'User', 'instructor@learnflow.app', 'instructor123'],
+            ['admin', 'Admin', 'User', 'admin@learnflow.app', 'admin123'],
+        ];
+
+        foreach ($seedUsers as [$role, $firstName, $lastName, $email, $password]) {
+            if ($this->getByEmail($email) !== null) {
+                continue;
+            }
+
+            $this->create($firstName, $lastName, $email, $password, $role, $role === 'admin');
+        }
     }
     
     /**

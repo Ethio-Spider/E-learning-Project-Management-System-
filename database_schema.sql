@@ -5,6 +5,23 @@ CREATE DATABASE IF NOT EXISTS elearning_db
 
 USE elearning_db;
 
+CREATE TABLE IF NOT EXISTS users (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    first_name VARCHAR(255) NOT NULL,
+    last_name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    role ENUM('student', 'instructor', 'admin') NOT NULL DEFAULT 'student',
+    avatar_url VARCHAR(1000) NULL,
+    bio TEXT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP NULL DEFAULT NULL,
+    INDEX idx_users_email (email),
+    INDEX idx_users_role (role),
+    INDEX idx_users_created_at (created_at)
+) ENGINE=InnoDB;
+
 -- Courses/Projects Table
 CREATE TABLE IF NOT EXISTS projects (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -203,6 +220,143 @@ CREATE TABLE IF NOT EXISTS payments (
     INDEX idx_payments_status (status),
     INDEX idx_payments_created_at (created_at)
 ) ENGINE=InnoDB;
+
+-- Email Verification Table
+CREATE TABLE IF NOT EXISTS email_verifications (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    verification_token VARCHAR(255) NOT NULL UNIQUE,
+    verified_at TIMESTAMP NULL DEFAULT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_email_verifications_user
+        FOREIGN KEY (user_id) REFERENCES users(id)
+        ON DELETE CASCADE,
+    INDEX idx_email_verifications_token (verification_token),
+    INDEX idx_email_verifications_user_id (user_id),
+    INDEX idx_email_verifications_expires_at (expires_at)
+) ENGINE=InnoDB;
+
+-- Password Reset Table
+CREATE TABLE IF NOT EXISTS password_resets (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NOT NULL,
+    reset_token VARCHAR(255) NOT NULL UNIQUE,
+    used_at TIMESTAMP NULL DEFAULT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_password_resets_user
+        FOREIGN KEY (user_id) REFERENCES users(id)
+        ON DELETE CASCADE,
+    INDEX idx_password_resets_token (reset_token),
+    INDEX idx_password_resets_user_id (user_id),
+    INDEX idx_password_resets_expires_at (expires_at)
+) ENGINE=InnoDB;
+
+-- Two-Factor Authentication Secrets
+CREATE TABLE IF NOT EXISTS two_factor_secrets (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NOT NULL UNIQUE,
+    secret VARCHAR(255) NOT NULL,
+    method ENUM('totp', 'sms') NOT NULL DEFAULT 'totp',
+    enabled BOOLEAN DEFAULT FALSE,
+    verified_at TIMESTAMP NULL DEFAULT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_2fa_user
+        FOREIGN KEY (user_id) REFERENCES users(id)
+        ON DELETE CASCADE,
+    INDEX idx_2fa_user_id (user_id)
+) ENGINE=InnoDB;
+
+-- 2FA Backup Codes
+CREATE TABLE IF NOT EXISTS backup_codes (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NOT NULL,
+    code VARCHAR(20) NOT NULL,
+    used_at TIMESTAMP NULL DEFAULT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_backup_codes_user
+        FOREIGN KEY (user_id) REFERENCES users(id)
+        ON DELETE CASCADE,
+    INDEX idx_backup_codes_user_id (user_id),
+    UNIQUE KEY uq_backup_code (user_id, code)
+) ENGINE=InnoDB;
+
+-- Audit Logs (Extended)
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NULL,
+    action VARCHAR(100) NOT NULL,
+    entity_type VARCHAR(50),
+    entity_id INT UNSIGNED,
+    old_values LONGTEXT,
+    new_values LONGTEXT,
+    ip_address VARCHAR(45) NOT NULL,
+    user_agent VARCHAR(500),
+    status VARCHAR(20) DEFAULT 'success',
+    details LONGTEXT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_audit_user
+        FOREIGN KEY (user_id) REFERENCES users(id)
+        ON DELETE SET NULL,
+    INDEX idx_audit_user_id (user_id),
+    INDEX idx_audit_action (action),
+    INDEX idx_audit_entity (entity_type, entity_id),
+    INDEX idx_audit_created_at (created_at)
+) ENGINE=InnoDB;
+
+-- Rate Limit Tracking
+CREATE TABLE IF NOT EXISTS rate_limits (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    identifier VARCHAR(255) NOT NULL,
+    endpoint VARCHAR(255) NOT NULL,
+    request_count INT DEFAULT 1,
+    window_start TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    window_end TIMESTAMP NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_rate_limit (identifier, endpoint, window_start),
+    INDEX idx_rate_limit_window_end (window_end)
+) ENGINE=InnoDB;
+
+-- Password History (for security policies)
+CREATE TABLE IF NOT EXISTS password_history (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    changed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_password_history_user
+        FOREIGN KEY (user_id) REFERENCES users(id)
+        ON DELETE CASCADE,
+    INDEX idx_password_history_user_id (user_id),
+    INDEX idx_password_history_changed_at (changed_at)
+) ENGINE=InnoDB;
+
+-- API Keys for Versioning
+CREATE TABLE IF NOT EXISTS api_keys (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NOT NULL,
+    key_hash VARCHAR(255) NOT NULL UNIQUE,
+    name VARCHAR(255) NOT NULL,
+    version VARCHAR(10) DEFAULT '2.0',
+    last_used_at TIMESTAMP NULL DEFAULT NULL,
+    expires_at TIMESTAMP NULL DEFAULT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_api_keys_user
+        FOREIGN KEY (user_id) REFERENCES users(id)
+        ON DELETE CASCADE,
+    INDEX idx_api_keys_user_id (user_id),
+    INDEX idx_api_keys_hash (key_hash),
+    INDEX idx_api_keys_active (is_active)
+) ENGINE=InnoDB;
+
+-- Session Management for Added Security
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMP NULL DEFAULT NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP NULL DEFAULT NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_ip VARCHAR(45) NULL;
 
 INSERT INTO projects
     (title, description, category, instructor, duration, level, status)

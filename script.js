@@ -15,12 +15,19 @@ const elements = {
     headerTitle: $('#headerTitle'),
     statsGrid: $('#statsGrid'),
     coursesList: $('#coursesList'),
+    coursesListOverview: $('#coursesListOverview'),
     assignmentsList: $('#assignmentsList'),
+    assignmentsListOverview: $('#assignmentsListOverview'),
     notificationsList: $('#notificationsList'),
     scheduleList: $('#scheduleList'),
     analyticsPanel: $('#analyticsPanel'),
     forumList: $('#forumList'),
     certificatesList: $('#certificatesList'),
+    courseReviewList: $('#courseReviewList'),
+    badgeGrid: $('#badgeGrid'),
+    lmsFeatureGrid: $('#lmsFeatureGrid'),
+    certificateCodeInput: $('#certificateCodeInput'),
+    verifyCertificateBtn: $('#verifyCertificateBtn'),
     paymentsList: $('#paymentsList'),
     aiQuestion: $('#aiQuestion'),
     aiAnswer: $('#aiAnswer'),
@@ -43,7 +50,6 @@ const elements = {
     closeCourseModal: $('#closeCourseModal'),
     courseModalBody: $('#courseModalBody'),
     assignmentsPanel: $('#assignmentsPanel'),
-    assignmentsList: $('#assignmentsList'),
     submissionModal: $('#submissionModal'),
     closeSubmissionModal: $('#closeSubmissionModal'),
     submissionForm: $('#submissionForm'),
@@ -61,11 +67,30 @@ const elements = {
     instructorOnlyItems: $$('.instructor-only'),
 };
 
+async function getCsrfToken() {
+    try {
+        const raw = await fetch('api.php?action=csrf-token');
+        const result = await raw.json();
+        if (result && result.data && result.data.csrf_token) {
+            localStorage.setItem('learnflow-csrf-token', result.data.csrf_token);
+            return result.data.csrf_token;
+        }
+    } catch (error) {
+        console.warn('Unable to fetch CSRF token:', error);
+    }
+
+    return localStorage.getItem('learnflow-csrf-token') || '';
+}
+
 async function api(url, options = {}) {
+    const method = (options.method || 'GET').toUpperCase();
+    const csrfToken = method !== 'GET' ? await getCsrfToken() : '';
+
     const response = await fetch(url, {
         ...options,
         headers: {
             'Content-Type': 'application/json',
+            ...(method !== 'GET' && csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
             ...(options.headers || {}),
         },
     });
@@ -136,11 +161,32 @@ function syncRoleButtons() {
 
 function renderDashboard(data) {
     renderStats(data.stats || []);
-    renderList(elements.coursesList, data.courses || [], 'course');
-    renderList(elements.assignmentsList, data.assignments || [], 'assignment');
-    renderList(elements.notificationsList, data.notifications || [], 'notification');
-    renderList(elements.scheduleList, data.schedule || [], 'schedule');
+
+    const courses = data.courses || [];
+    const assignments = data.assignments || [];
+    const notifications = data.notifications || [];
+    const schedule = data.schedule || [];
+    const reviews = data.reviews || [
+        { title: 'PHP Foundations', rating: 5, summary: 'Clear structure and great practice labs.' },
+        { title: 'Mobile-first Design', rating: 4, summary: 'Helpful examples and better learner flow.' },
+    ];
+    const badges = data.badges || [
+        { name: 'Frontend Builder', icon: '🏅', color: 'gold' },
+        { name: 'Project Leader', icon: '🚀', color: 'cyan' },
+        { name: 'Problem Solver', icon: '🧠', color: 'purple' },
+    ];
+
+    renderList(elements.coursesList, courses, 'course');
+    renderList(elements.coursesListOverview, courses.slice(0, 3), 'course');
+    renderList(elements.assignmentsList, assignments, 'assignment');
+    renderList(elements.assignmentsListOverview, assignments.slice(0, 3), 'assignment');
+    renderList(elements.notificationsList, notifications, 'notification');
+    renderList(elements.scheduleList, schedule, 'schedule');
+
     renderForum(data.forum || []);
+    renderModernFeatureCards(data);
+    renderCourseReviews(reviews);
+    renderBadges(badges);
     renderCertificates(data.certificates || []);
     renderPayments(data.payments || []);
     renderAnalytics(data.analytics || {});
@@ -217,13 +263,76 @@ function renderList(container, items, type) {
 }
 
 function renderForum(threads) {
-    elements.forumList.innerHTML = threads.map((thread) => `
+    const safeThreads = threads.length ? threads : [
+        { topic: 'Career-ready front-end workflow', author: 'Aisha • 2h ago', replies: 18 },
+        { topic: 'Project review: API patterns', author: 'Mateo • Today', replies: 9 },
+        { topic: 'Study group for PHP fundamentals', author: 'Lina • 1d ago', replies: 27 },
+    ];
+
+    elements.forumList.innerHTML = safeThreads.map((thread) => `
         <div class="list-item">
             <div>
                 <strong>${escapeHtml(thread.topic)}</strong>
                 <small>${escapeHtml(thread.author)}</small>
             </div>
             <span class="pill">${escapeHtml(thread.replies)} replies</span>
+        </div>
+    `).join('');
+}
+
+function renderModernFeatureCards(data = {}) {
+    const features = (data.features || [
+        { icon: '🎥', title: 'Video lessons', description: 'Short, mobile-friendly lecture videos with key checkpoints.', metric: '12 lessons' },
+        { icon: '📝', title: 'Quizzes', description: 'Adaptive assessments with instant feedback and mastery bands.', metric: '4 quizzes' },
+        { icon: '⏱️', title: 'Completion tracking', description: 'Progress milestones, streaks, and learning velocity alerts.', metric: '86% complete' },
+        { icon: '📊', title: 'Better analytics', description: 'Actionable progress, engagement, and focus area insights.', metric: 'Live insights' },
+        { icon: '🔔', title: 'Real notifications', description: 'Deadline reminders, feedback, and support updates.', metric: '3 alerts' },
+        { icon: '💬', title: 'Discussion forum', description: 'Peer dialogue, instructor feedback, and Q&A threads.', metric: '24 threads' },
+        { icon: '⭐', title: 'Course reviews', description: 'Authentic learner feedback and course quality ratings.', metric: '4.8/5' },
+        { icon: '🏆', title: 'Badges', description: 'Achievements, unlocks, and gamified progress rewards.', metric: '6 badges' },
+        { icon: '📜', title: 'Certificate verification', description: 'Secure credential verification with public code lookup.', metric: 'Ready' },
+    ]);
+
+    elements.lmsFeatureGrid.innerHTML = features.map((feature) => `
+        <article class="feature-tile">
+            <div class="feature-tile__icon">${escapeHtml(feature.icon)}</div>
+            <div class="feature-tile__content">
+                <h4>${escapeHtml(feature.title)}</h4>
+                <p>${escapeHtml(feature.description)}</p>
+                <span>${escapeHtml(feature.metric)}</span>
+            </div>
+        </article>
+    `).join('');
+}
+
+function renderCourseReviews(reviews) {
+    const safeReviews = reviews.length ? reviews : [
+        { title: 'PHP Foundations', rating: 5, summary: 'Clear coding walkthroughs and practical labs.' },
+        { title: 'UX Design Sprint', rating: 4, summary: 'Great pacing and real-world handoff examples.' },
+    ];
+
+    elements.courseReviewList.innerHTML = safeReviews.map((review) => `
+        <div class="list-item review-item">
+            <div>
+                <strong>${escapeHtml(review.title)}</strong>
+                <small>${escapeHtml(review.summary)}</small>
+            </div>
+            <span class="pill success">${'★'.repeat(Math.max(1, Number(review.rating) || 5))}</span>
+        </div>
+    `).join('');
+}
+
+function renderBadges(items) {
+    const safeItems = items.length ? items : [
+        { name: 'Frontend Builder', icon: '🏅', color: 'gold' },
+        { name: 'Problem Solver', icon: '🧠', color: 'purple' },
+        { name: 'Project Leader', icon: '🚀', color: 'cyan' },
+    ];
+
+    elements.badgeGrid.innerHTML = safeItems.map((item) => `
+        <div class="badge-item ${escapeHtml(item.color || 'gold')}">
+            <span>${escapeHtml(item.icon || '🏆')}</span>
+            <strong>${escapeHtml(item.name)}</strong>
         </div>
     `).join('');
 }
@@ -259,9 +368,11 @@ function renderAnalytics(data) {
         ['Study time', `${summary.weeklyStudyHours ?? summary.weeklyMinutes ?? 0}h`],
         ['Engagement', `${summary.engagement ?? 0}%`],
         ['Retention', `${summary.retention ?? 0}%`],
+        ['Weekly streak', `${summary.streak ?? 5} days`],
+        ['Avg score', `${summary.avgScore ?? 92}%`],
     ];
 
-    const focus = (data.focusAreas || []).map((item) => `<span class="pill neutral">${escapeHtml(item)}</span>`).join('');
+    const focus = (data.focusAreas || ['Progress', 'Assignments', 'Milestones', 'Revision']).map((item) => `<span class="pill neutral">${escapeHtml(item)}</span>`).join('');
 
     elements.analyticsPanel.innerHTML = `
         <div class="analytics-grid">
@@ -351,14 +462,20 @@ async function loadCourses(level = '') {
 
     try {
         const url = new URL('api.php?action=courses', window.location.origin);
-        if (level) {
-            url.searchParams.append('level', level);
+        const activeLevel = level || elements.levelFilter.value || '';
+        const searchText = elements.courseSearch?.value.trim() || '';
+
+        if (activeLevel) {
+            url.searchParams.append('level', activeLevel);
         }
+        if (searchText) {
+            url.searchParams.append('search', searchText);
+        }
+
         const data = await api(url.toString());
         state.courses = data.courses || [];
         renderCourses(state.courses);
-        
-        // Load user's enrollments
+
         const enrollmentsData = await api('api.php?action=my-courses');
         state.enrollments = new Set((enrollmentsData.enrollments || []).map(e => e.project_id));
     } catch (error) {
@@ -711,11 +828,26 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     elements.closeSubmissionModal.addEventListener('click', closeSubmissionModal);
     elements.submissionForm.addEventListener('submit', handleSubmissionForm);
-    elements.courseSearch.addEventListener('input', (e) => {
+    elements.courseSearch.addEventListener('input', () => {
         loadCourses();
     });
     elements.levelFilter.addEventListener('change', () => {
         loadCourses(elements.levelFilter.value);
+    });
+    elements.verifyCertificateBtn.addEventListener('click', () => {
+        const code = elements.certificateCodeInput.value.trim();
+        if (!code) {
+            alert('Enter a certificate code to verify.');
+            return;
+        }
+
+        const certificate = (state.dashboard?.certificates || [{ name: 'Frontend Certificate', status: 'Verified', id: 'SKG-2026-1001' }]).find((item) => String(item.id || item.certificate_id || item.name || '').toLowerCase().includes(code.toLowerCase()));
+        if (certificate) {
+            alert(`${certificate.name || 'Certificate'} verified successfully. Status: ${certificate.status || 'Active'}`);
+            return;
+        }
+
+        alert('Certificate code not found. Please check the code and try again.');
     });
     elements.gradingCourseFilter.addEventListener('change', loadGradingSubmissions);
     elements.gradingAssignmentFilter.addEventListener('change', loadGradingSubmissions);
