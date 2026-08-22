@@ -1005,15 +1005,24 @@ try {
         
         $input = json_decode(file_get_contents('php://input') ?: '{}', true) ?? [];
         $courseId = (int)($input['course_id'] ?? 0);
-        $amount = (float)($input['amount'] ?? 0);
-        $paymentMethod = (string)($input['payment_method'] ?? 'stripe'); // stripe or paypal
+        $paymentMethod = strtolower(trim((string)($input['payment_method'] ?? 'telebirr')));
 
-        if ($courseId <= 0 || $amount <= 0) {
-            apiResponse(false, 'Course ID and amount are required.', null, 400);
+        if ($courseId <= 0) {
+            apiResponse(false, 'Course ID is required.', null, 400);
         }
 
         try {
             $pdo = getDatabase();
+            $courseStmt = $pdo->prepare('SELECT price FROM projects WHERE id = ? AND deleted_at IS NULL AND status = "Active" LIMIT 1');
+            $courseStmt->execute([$courseId]);
+            $course = $courseStmt->fetch();
+            $amount = (float)($course['price'] ?? 0);
+            if ($course === false || $amount <= 0) {
+                apiResponse(false, 'This course is free or unavailable for online payment.', null, 400);
+            }
+            if (!in_array($paymentMethod, ['telebirr', 'card', 'visa', 'mastercard', 'paypal', 'stripe'], true)) {
+                apiResponse(false, 'Unsupported payment method.', null, 400);
+            }
             $paymentService = new PaymentService($pdo);
             
             $payment = $paymentService->initiatePayment(

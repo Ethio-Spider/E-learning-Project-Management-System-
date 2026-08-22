@@ -93,7 +93,7 @@ CREATE TABLE IF NOT EXISTS assignments (
 CREATE TABLE IF NOT EXISTS submissions (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     assignment_id INT UNSIGNED NOT NULL,
-    enrollment_id INT UNSIGNED NOT NULL,
+    enrollment_id INT UNSIGNED NULL,
     student_email VARCHAR(255) NOT NULL,
     submission_text LONGTEXT,
     file_url VARCHAR(1000),
@@ -397,6 +397,24 @@ SELECT
 WHERE NOT EXISTS (
     SELECT 1 FROM projects WHERE title = 'Data Science Fundamentals'
 );
+
+-- Starter catalog for science, language, mathematics, and software tracks.
+INSERT INTO projects (title, description, category, instructor, duration, level, status, price)
+SELECT seed.title, seed.description, seed.category, seed.instructor, seed.duration, seed.level, 'Active', seed.price
+FROM (
+    SELECT 'Physics Fundamentals' title, 'Understand motion, energy, forces, and practical problem solving.' description, 'Science' category, 'Dr. Hana Bekele' instructor, '10 weeks' duration, 'Beginner' level, 650.00 price
+    UNION ALL SELECT 'Chemistry Essentials', 'Explore atoms, reactions, laboratory safety, and chemical equations.', 'Science', 'Dr. Dawit Tesfaye', '10 weeks', 'Beginner', 650.00
+    UNION ALL SELECT 'Academic English', 'Build confident academic writing, reading, speaking, and presentation skills.', 'Languages', 'Marta Wilson', '8 weeks', 'Beginner', 500.00
+    UNION ALL SELECT 'Mathematics for Problem Solving', 'Strengthen algebra, functions, geometry, and logical reasoning.', 'Mathematics', 'Samuel Alemu', '12 weeks', 'Intermediate', 700.00
+    UNION ALL SELECT 'Java Programming', 'Learn object-oriented Java by building practical console and web applications.', 'Programming', 'Liya Mengistu', '12 weeks', 'Intermediate', 900.00
+    UNION ALL SELECT 'SQL and Relational Databases', 'Write reliable SQL queries and design normalized relational databases.', 'Databases', 'Natan Kebede', '8 weeks', 'Intermediate', 750.00
+    UNION ALL SELECT 'NoSQL Data Modeling', 'Work with document, key-value, and flexible NoSQL data models.', 'Databases', 'Natan Kebede', '6 weeks', 'Advanced', 800.00
+    UNION ALL SELECT 'Database Design', 'Model data, relationships, indexes, constraints, and production schemas.', 'Databases', 'Rahel Tadesse', '8 weeks', 'Intermediate', 750.00
+    UNION ALL SELECT 'PHP Backend Development', 'Build secure PHP applications with PDO, sessions, APIs, and testing.', 'Backend Development', 'Jane Smith', '12 weeks', 'Intermediate', 900.00
+    UNION ALL SELECT 'JavaScript Applications', 'Create interactive browser applications with modern JavaScript APIs.', 'Web Development', 'John Doe', '10 weeks', 'Intermediate', 850.00
+    UNION ALL SELECT 'CSS Interface Design', 'Master responsive layouts, accessibility, animation, and design systems.', 'Web Development', 'John Doe', '6 weeks', 'Beginner', 550.00
+) seed
+WHERE NOT EXISTS (SELECT 1 FROM projects existing WHERE existing.title = seed.title);
 
 -- Sample assignments
 INSERT INTO assignments

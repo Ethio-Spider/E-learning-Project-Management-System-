@@ -64,6 +64,20 @@ const elements = {
     gradingModal: $('#gradingModal'),
     closeGradingModal: $('#closeGradingModal'),
     gradingModalBody: $('#gradingModalBody'),
+    paymentModal: $('#paymentModal'),
+    closePaymentModal: $('#closePaymentModal'),
+    paymentForm: $('#paymentForm'),
+    paymentCourseTitle: $('#paymentCourseTitle'),
+    paymentAmount: $('#paymentAmount'),
+    paymentMethod: $('#paymentMethod'),
+    telebirrFields: $('#telebirrFields'),
+    cardFields: $('#cardFields'),
+    telebirrPhone: $('#telebirrPhone'),
+    cardholderName: $('#cardholderName'),
+    cardNumber: $('#cardNumber'),
+    cardExpiry: $('#cardExpiry'),
+    cardCvv: $('#cardCvv'),
+    paymentProviderNote: $('#paymentProviderNote'),
     instructorOnlyItems: $$('.instructor-only'),
 };
 
@@ -524,11 +538,11 @@ function renderCourses(courses) {
                 <h3>${escapeHtml(course.title)}</h3>
                 <span class="pill">${escapeHtml(course.level)}</span>
             </div>
-            <p class="course-meta">${escapeHtml(course.category)} • ${escapeHtml(course.duration)}</p>
+            <p class="course-meta">${escapeHtml(course.category)} • ${escapeHtml(course.duration)} • ${course.price ? `${Number(course.price).toLocaleString()} ETB` : 'Free'}</p>
             <p class="course-desc">${escapeHtml(course.description ? course.description.substring(0, 120) + '...' : 'No description')}</p>
             <div class="course-footer">
                 <span>${escapeHtml(course.instructor)}</span>
-                <button class="btn btn-primary small" data-course-id="${course.id}" data-course-title="${escapeHtml(course.title)}">
+                <button class="btn btn-primary small" data-course-id="${course.id}" data-course-title="${escapeHtml(course.title)}" data-course-price="${Number(course.price || 0)}">
                     ${state.enrollments.has(course.id) ? 'Enrolled' : 'Enroll'}
                 </button>
             </div>
@@ -540,13 +554,18 @@ function renderCourses(courses) {
         button.addEventListener('click', () => {
             const courseId = parseInt(button.dataset.courseId, 10);
             if (!state.enrollments.has(courseId)) {
-                enrollCourse(courseId, button.dataset.courseTitle);
+                enrollCourse(courseId, button.dataset.courseTitle, Number(button.dataset.coursePrice || 0));
             }
         });
     });
 }
 
-async function enrollCourse(courseId, courseTitle) {
+async function enrollCourse(courseId, courseTitle, price) {
+    if (price > 0) {
+        openPaymentModal(courseId, courseTitle, price);
+        return;
+    }
+
     try {
         await api('api.php?action=enroll', {
             method: 'POST',
@@ -557,6 +576,61 @@ async function enrollCourse(courseId, courseTitle) {
         loadCourses();
     } catch (error) {
         alert(error.message || 'Enrollment failed');
+    }
+}
+
+function openPaymentModal(courseId, courseTitle, price) {
+    elements.paymentForm.dataset.courseId = courseId;
+    elements.paymentForm.dataset.courseTitle = courseTitle;
+    elements.paymentCourseTitle.textContent = courseTitle;
+    elements.paymentAmount.textContent = `${price.toLocaleString()} ETB`;
+    elements.paymentForm.reset();
+    updatePaymentFields();
+    elements.paymentModal.classList.remove('hidden');
+}
+
+function closePaymentModal() {
+    elements.paymentModal.classList.add('hidden');
+}
+
+function updatePaymentFields() {
+    const method = elements.paymentMethod.value;
+    const isCard = ['card', 'visa', 'mastercard'].includes(method);
+    elements.cardFields.classList.toggle('hidden', !isCard);
+    elements.telebirrFields.classList.toggle('hidden', method !== 'telebirr');
+    [elements.cardholderName, elements.cardNumber, elements.cardExpiry, elements.cardCvv].forEach((field) => {
+        field.required = isCard;
+    });
+    elements.telebirrPhone.required = method === 'telebirr';
+    elements.paymentProviderNote.textContent = method === 'telebirr'
+        ? 'Enter your Telebirr number. The next step will show your payment reference instructions.'
+        : isCard
+            ? 'Enter your card details to continue to the secure provider checkout.'
+            : 'You will continue to the selected payment provider after checkout.';
+}
+
+async function handlePaymentForm(event) {
+    event.preventDefault();
+    const courseId = Number(elements.paymentForm.dataset.courseId);
+    const courseTitle = elements.paymentForm.dataset.courseTitle;
+    const paymentMethod = elements.paymentMethod.value;
+
+    try {
+        const payment = await api('api.php?action=initiate-payment', {
+            method: 'POST',
+            body: JSON.stringify({ course_id: courseId, payment_method: paymentMethod }),
+        });
+        if (!payment.success) throw new Error(payment.message || 'Payment could not be started.');
+
+        await api('api.php?action=enroll', {
+            method: 'POST',
+            body: JSON.stringify({ course_id: courseId }),
+        });
+        closePaymentModal();
+        alert(`Payment started in ETB and enrollment reserved for ${courseTitle}.`);
+        loadCourses();
+    } catch (error) {
+        alert(error.message || 'Payment failed');
     }
 }
 
@@ -894,6 +968,9 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.closeGradingModal.addEventListener('click', () => {
         elements.gradingModal.classList.add('hidden');
     });
+    elements.closePaymentModal.addEventListener('click', closePaymentModal);
+    elements.paymentMethod.addEventListener('change', updatePaymentFields);
+    elements.paymentForm.addEventListener('submit', handlePaymentForm);
 
     initSession();
 });

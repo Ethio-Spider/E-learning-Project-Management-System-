@@ -1760,6 +1760,57 @@ body {
     color: var(--primary) !important;
 }
 
+.payment-modal-content {
+    width: min(520px, 100%);
+}
+
+.payment-total {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    margin: 16px 0 22px;
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    color: var(--muted);
+    background: rgba(155, 225, 93, 0.07);
+}
+
+.payment-total strong {
+    color: var(--primary);
+    font-size: 1.3rem;
+}
+
+.payment-fields {
+    display: grid;
+    gap: 14px;
+}
+
+.payment-card-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+}
+
+.payment-note,
+.payment-security {
+    color: var(--muted);
+    line-height: 1.5;
+}
+
+.payment-security {
+    display: block;
+    text-align: center;
+    font-size: 0.75rem;
+}
+
+@media (max-width: 520px) {
+    .payment-card-row {
+        grid-template-columns: 1fr;
+    }
+}
+
 @media (max-width: 700px) {
     .auth-shell,
     .grading-container {

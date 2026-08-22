@@ -43,7 +43,7 @@ class PaymentService
     /**
      * Initiate payment
      */
-    public function initiatePayment(int $userId, int $courseId, float $amount, string $paymentMethod = 'stripe'): array
+    public function initiatePayment(int $userId, int $courseId, float $amount, string $paymentMethod = 'telebirr'): array
     {
         $paymentId = $this->generatePaymentId();
         $studentEmail = $this->getUserEmailById($userId) ?? 'unknown@example.com';
@@ -53,10 +53,23 @@ class PaymentService
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())';
         
         $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([0, $studentEmail, $courseId, $courseTitle, $amount, 'USD', $paymentMethod, $paymentId, 'Pending']);
+        $stmt->execute([null, $studentEmail, $courseId, $courseTitle, $amount, 'ETB', $paymentMethod, $paymentId, 'Pending']);
         
         $localId = (int)$this->pdo->lastInsertId();
         
+        if (in_array($paymentMethod, ['telebirr', 'card', 'visa', 'mastercard'], true)) {
+            return [
+                'success' => true,
+                'method' => $paymentMethod,
+                'currency' => 'ETB',
+                'payment_id' => $paymentId,
+                'local_id' => $localId,
+                'status' => 'Pending',
+                'instructions' => 'Complete the payment in your selected provider, then provide the payment reference to support.',
+                'amount' => $amount,
+            ];
+        }
+
         if ($paymentMethod === 'stripe') {
             return $this->createStripeSession($localId, $paymentId, $amount, $courseId);
         } elseif ($paymentMethod === 'paypal') {

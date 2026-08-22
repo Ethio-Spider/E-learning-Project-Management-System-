@@ -486,6 +486,56 @@ declare(strict_types=1);
         </div>
     </div>
 
+    <div id="paymentModal" class="modal hidden" aria-live="polite">
+        <div class="modal-content payment-modal-content">
+            <button class="close" type="button" id="closePaymentModal" aria-label="Close">&times;</button>
+            <p class="eyebrow">Secure checkout</p>
+            <h2 id="paymentCourseTitle">Complete payment</h2>
+            <p class="payment-total">Total <strong id="paymentAmount">0 ETB</strong></p>
+            <form id="paymentForm" class="login-form">
+                <div class="field-group">
+                    <label for="paymentMethod">Payment method</label>
+                    <select id="paymentMethod" required>
+                        <option value="telebirr">Telebirr</option>
+                        <option value="visa">Visa card</option>
+                        <option value="mastercard">Mastercard</option>
+                        <option value="card">Other bank card</option>
+                        <option value="paypal">PayPal</option>
+                    </select>
+                </div>
+                <div id="telebirrFields" class="payment-fields">
+                    <div class="field-group">
+                        <label for="telebirrPhone">Telebirr phone number</label>
+                        <input id="telebirrPhone" type="tel" placeholder="09XXXXXXXX" inputmode="tel">
+                    </div>
+                </div>
+                <div id="cardFields" class="payment-fields hidden">
+                    <div class="field-group">
+                        <label for="cardholderName">Cardholder name</label>
+                        <input id="cardholderName" type="text" autocomplete="cc-name" placeholder="Name on card">
+                    </div>
+                    <div class="field-group">
+                        <label for="cardNumber">Card number</label>
+                        <input id="cardNumber" type="text" inputmode="numeric" autocomplete="cc-number" placeholder="•••• •••• •••• ••••" maxlength="19">
+                    </div>
+                    <div class="payment-card-row">
+                        <div class="field-group">
+                            <label for="cardExpiry">Expiry</label>
+                            <input id="cardExpiry" type="text" inputmode="numeric" autocomplete="cc-exp" placeholder="MM/YY" maxlength="5">
+                        </div>
+                        <div class="field-group">
+                            <label for="cardCvv">CVV</label>
+                            <input id="cardCvv" type="password" inputmode="numeric" autocomplete="cc-csc" placeholder="•••" maxlength="4">
+                        </div>
+                    </div>
+                </div>
+                <p id="paymentProviderNote" class="payment-note">You will receive payment instructions after checkout.</p>
+                <button type="submit" class="btn btn-primary full">Continue to payment</button>
+                <small class="payment-security">Your card details are used only for this checkout demo and are never saved by this application.</small>
+            </form>
+        </div>
+    </div>
+
     <script src="script.js" defer></script>
 </body>
 </html>
