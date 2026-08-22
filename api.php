@@ -506,7 +506,7 @@ try {
             $selectedRole = $user['role'];
         }
 
-        if ($user['role'] !== $selectedRole && $selectedRole !== 'student') {
+        if ($user['role'] !== $selectedRole) {
             auditLog('login_role_mismatch', (int) $user['id'], 'user', (int) $user['id'], [], ['required_role' => $selectedRole, 'actual_role' => $user['role']], 'Role mismatch');
             apiResponse(false, 'Role mismatch for this account.', null, 403);
         }
@@ -672,6 +672,13 @@ try {
                 $mailer = new EmailService();
                 $mailer->sendPasswordResetEmail($email, $token, $user['first_name']);
                 auditLog('password_reset_requested', (int) $user['id'], 'user', (int) $user['id'], [], ['email' => $email], 'Password reset requested');
+
+                if (isDebug() || getenv('APP_ENV') === 'local') {
+                    apiResponse(true, 'Password reset link created for local development.', [
+                        'sent' => true,
+                        'reset_url' => 'reset-password.html?token=' . urlencode($token),
+                    ]);
+                }
             }
 
             apiResponse(true, 'If an account exists for this email, a reset link has been sent.', ['sent' => true]);
@@ -1469,10 +1476,7 @@ try {
 
     if ($method === 'GET' && ($action === 'dashboard' || $action === '')) {
         $user = requireAuth();
-        $sessionRole = strtolower((string) ($user['role'] ?? 'student'));
-        $role = in_array($role, ['student', 'instructor', 'admin'], true) ? $role : $sessionRole;
-        $effectiveRole = in_array($role, ['student', 'instructor', 'admin'], true) ? $role : $sessionRole;
-        $user['role'] = $effectiveRole;
+        $effectiveRole = strtolower((string) ($user['role'] ?? 'student'));
 
         $pdo = getDatabase();
         apiResponse(true, 'Dashboard loaded.', buildDashboardData($pdo, $user));

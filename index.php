@@ -204,14 +204,15 @@ declare(strict_types=1);
 
                     <nav class="side-nav" aria-label="Dashboard navigation">
                         <button class="nav-item active" data-view="overview">Overview</button>
-                        <button class="nav-item" data-view="courses">Explore</button>
-                        <button class="nav-item" data-view="assignments">Assignments</button>
-                        <button class="nav-item instructor-only hidden" data-view="manage">Manage</button>
-                        <button class="nav-item instructor-only hidden" data-view="grading">Grading</button>
-                        <button class="nav-item" data-view="schedule">Schedule</button>
-                        <button class="nav-item" data-view="analytics">Analytics</button>
-                        <button class="nav-item" data-view="forum">Forum</button>
-                        <button class="nav-item" data-view="payments">Payments</button>
+                        <button class="nav-item" data-view="courses" data-roles="student">Explore</button>
+                        <button class="nav-item" data-view="assignments" data-roles="student">Assignments</button>
+                        <button class="nav-item hidden" data-view="manage" data-roles="instructor">Manage courses</button>
+                        <button class="nav-item hidden" data-view="grading" data-roles="instructor,admin">Grading</button>
+                        <button class="nav-item" data-view="schedule" data-roles="student,instructor,admin">Schedule</button>
+                        <button class="nav-item" data-view="analytics" data-roles="student,instructor,admin">Analytics</button>
+                        <button class="nav-item" data-view="forum" data-roles="student,instructor,admin">Forum</button>
+                        <button class="nav-item" data-view="payments" data-roles="student,admin">Payments</button>
+                        <button class="nav-item hidden" data-view="admin-users" data-roles="admin">User management</button>
                     </nav>
 
                     <div class="mini-panel">
@@ -231,7 +232,7 @@ declare(strict_types=1);
                         </div>
 
                         <div class="topbar-actions">
-                            <div class="role-switcher" aria-label="Choose user role">
+                            <div class="role-switcher" aria-label="Current user role">
                                 <button class="role-btn active" data-role="student">Student</button>
                                 <button class="role-btn" data-role="instructor">Instructor</button>
                                 <button class="role-btn" data-role="admin">Admin</button>
@@ -296,7 +297,7 @@ declare(strict_types=1);
                         <div id="assignmentsList" class="assignments-list"></div>
                     </section>
 
-                    <section class="overview-panel hidden instructor-only" id="managePanel">
+                    <section class="overview-panel hidden" id="managePanel" data-roles="instructor">
                         <div class="hero-card dashboard-hero">
                             <div>
                                 <p class="eyebrow">Instructor</p>
@@ -308,7 +309,7 @@ declare(strict_types=1);
                         <div id="manageCoursesList" class="courses-grid"></div>
                     </section>
 
-                    <section class="overview-panel hidden instructor-only" id="gradingPanel">
+                    <section class="overview-panel hidden" id="gradingPanel" data-roles="instructor,admin">
                         <div class="hero-card dashboard-hero">
                             <div>
                                 <p class="eyebrow">Instructor</p>

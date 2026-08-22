@@ -81,6 +81,7 @@ const elements = {
     paymentProviderNote: $('#paymentProviderNote'),
     managePaymentsBtn: $('#managePaymentsBtn'),
     instructorOnlyItems: $$('.instructor-only'),
+    roleScopedItems: $$('[data-roles]'),
 };
 
 async function getCsrfToken() {
@@ -131,6 +132,7 @@ async function api(url, options = {}) {
 function setRole(role, shouldLoad = true) {
     state.role = role;
     syncRoleButtons();
+    applyRoleVisibility();
     elements.headerTitle.textContent = `${role.charAt(0).toUpperCase() + role.slice(1)} dashboard`;
     if (shouldLoad) {
         loadDashboard();
@@ -175,10 +177,7 @@ async function initSession() {
         setRole(state.role, false);
         hideLoginModal();
         
-        // Show instructor-only nav items
-        if (state.user.role === 'instructor' || state.user.role === 'admin') {
-            elements.instructorOnlyItems.forEach(item => item.classList.remove('hidden'));
-        }
+        applyRoleVisibility();
     } catch (error) {
         state.isAuthenticated = false;
         state.user = null;
@@ -200,6 +199,14 @@ function syncRoleButtons() {
     elements.roleButtons.forEach((button) => {
         const isActive = button.dataset.role === state.role;
         button.classList.toggle('active', isActive);
+        button.classList.toggle('hidden', !isActive);
+    });
+}
+
+function applyRoleVisibility() {
+    elements.roleScopedItems.forEach((item) => {
+        const allowedRoles = (item.dataset.roles || '').split(',').map((value) => value.trim());
+        item.classList.toggle('hidden', !allowedRoles.includes(state.role));
     });
 }
 
@@ -491,7 +498,9 @@ async function handleLogout() {
     } finally {
         state.isAuthenticated = false;
         state.user = null;
-        showLoginModal();
+        state.dashboard = null;
+        localStorage.removeItem('learnflow-csrf-token');
+        window.location.replace('login.html');
     }
 }
 
@@ -723,6 +732,8 @@ function switchView(view) {
     } else if (view === 'grading') {
         elements.gradingPanel?.classList.remove('hidden');
         loadGradingSubmissions();
+    } else if (view === 'admin-users') {
+        window.location.href = 'admin-users.html';
     } else {
         const overviewTargets = {
             schedule: elements.scheduleList,

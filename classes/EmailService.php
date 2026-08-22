@@ -120,7 +120,8 @@ class EmailService
             $headers .= "Content-type: text/html; charset=UTF-8" . "\r\n";
             $headers .= "From: {$this->config['from_name']} <{$this->config['from']}>" . "\r\n";
 
-            $result = mail($to, $subject, $body, $headers);
+            // Mail transport is optional in local development; keep warnings out of API JSON.
+            $result = @mail($to, $subject, $body, $headers);
 
             if ($result) {
                 $this->logger->log('Email sent to ' . $to, 'info');

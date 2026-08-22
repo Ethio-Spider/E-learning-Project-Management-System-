@@ -389,7 +389,7 @@ declare(strict_types=1);
 
                     <div class="inline-row">
                         <label><input type="checkbox" id="remember" name="remember"> Remember me</label>
-                        <a href="#forgot">Forgot password?</a>
+                        <a href="#forgot" id="forgotPasswordLink">Forgot password?</a>
                     </div>
 
                     <button class="submit-btn" type="submit">
@@ -405,12 +405,35 @@ declare(strict_types=1);
         </div>
     </div>
 
+    <div id="forgotPasswordModal" class="modal hidden" aria-live="polite">
+        <div class="modal-content">
+            <button class="close" type="button" id="closeForgotPassword" aria-label="Close">&times;</button>
+            <div class="auth-header">
+                <h2>Reset your password</h2>
+                <p>Enter the email linked to your admin account.</p>
+            </div>
+            <div id="forgotMessage" class="message"></div>
+            <form id="forgotPasswordForm">
+                <div class="field-group">
+                    <label for="forgotEmail">Account email</label>
+                    <input id="forgotEmail" type="email" autocomplete="email" placeholder="admin@example.com" required>
+                </div>
+                <button class="submit-btn" type="submit">Send reset link</button>
+            </form>
+        </div>
+    </div>
+
     <script>
         const form = document.getElementById('loginForm');
         const errorBox = document.getElementById('errorMessage');
         const successBox = document.getElementById('successMessage');
         const loginButtonText = document.getElementById('loginButtonText');
         const loginSpinner = document.getElementById('loginSpinner');
+        const forgotPasswordLink = document.getElementById('forgotPasswordLink');
+        const forgotPasswordModal = document.getElementById('forgotPasswordModal');
+        const closeForgotPassword = document.getElementById('closeForgotPassword');
+        const forgotPasswordForm = document.getElementById('forgotPasswordForm');
+        const forgotMessage = document.getElementById('forgotMessage');
         let csrfToken = '';
 
         function showMessage(type, message) {
@@ -492,6 +515,42 @@ declare(strict_types=1);
                 submitButton.disabled = false;
                 loginButtonText.textContent = 'Sign in';
                 loginSpinner.style.display = 'none';
+            }
+        });
+
+        forgotPasswordLink.addEventListener('click', (event) => {
+            event.preventDefault();
+            forgotPasswordModal.classList.remove('hidden');
+            document.getElementById('forgotEmail').focus();
+        });
+
+        closeForgotPassword.addEventListener('click', () => forgotPasswordModal.classList.add('hidden'));
+
+        forgotPasswordForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            forgotMessage.className = 'message';
+            forgotMessage.textContent = '';
+            await fetchCsrfToken();
+
+            try {
+                const response = await fetch('api.php?action=request-password-reset', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                    body: JSON.stringify({ email: document.getElementById('forgotEmail').value.trim() })
+                });
+                const result = await response.json();
+                if (!response.ok || !result.success) throw new Error(result.message || 'Unable to request password reset.');
+
+                forgotMessage.className = 'message success';
+                if (result.data?.reset_url) {
+                    forgotMessage.innerHTML = `Local reset link created. <a href="${result.data.reset_url}">Open reset page</a>`;
+                } else {
+                    forgotMessage.textContent = result.message;
+                }
+            } catch (error) {
+                forgotMessage.className = 'message error';
+                forgotMessage.textContent = error.message;
             }
         });
     </script>
