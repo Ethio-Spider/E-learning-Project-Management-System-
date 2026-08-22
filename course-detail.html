@@ -289,6 +289,15 @@ declare(strict_types=1);
     <script>
         const courseId = new URLSearchParams(window.location.search).get('id');
 
+        async function getCsrfToken() {
+            const response = await fetch('api.php?action=csrf-token', { credentials: 'same-origin' });
+            const result = await response.json();
+            if (!result.success || !result.data?.csrf_token) {
+                throw new Error(result.message || 'Unable to initialize request security.');
+            }
+            return result.data.csrf_token;
+        }
+
         if (!courseId) {
             document.querySelector('.course-detail-container').innerHTML = '<div class="empty-box">Course not found</div>';
         } else {
@@ -388,9 +397,10 @@ declare(strict_types=1);
             if (!confirm(`Enroll in "${course.title}"?`)) return;
 
             try {
+                const csrfToken = await getCsrfToken();
                 const response = await fetch('api.php?action=enroll', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
                     body: JSON.stringify({ course_id: courseId }),
                 });
 

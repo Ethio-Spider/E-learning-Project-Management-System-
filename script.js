@@ -585,6 +585,18 @@ function switchView(view) {
     } else if (view === 'grading') {
         elements.gradingPanel?.classList.remove('hidden');
         loadGradingSubmissions();
+    } else {
+        const overviewTargets = {
+            schedule: elements.scheduleList,
+            analytics: elements.analyticsPanel,
+            forum: elements.forumList,
+            payments: elements.paymentsList,
+        };
+        const target = overviewTargets[view];
+        if (target) {
+            elements.overviewPanel?.classList.remove('hidden');
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
     }
 }
 

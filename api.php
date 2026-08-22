@@ -523,13 +523,6 @@ try {
         ];
         $_SESSION['role'] = $effectiveRole;
 
-        // Keep authentication independent from dashboard loading.  A broken
-        // dashboard query must not make a valid login look like a failed login.
-        $updateLogin = $pdo->prepare(
-            'UPDATE users SET last_login_at = CURRENT_TIMESTAMP, last_login_ip = ? WHERE id = ?'
-        );
-        $updateLogin->execute([getClientIp(), (int) $user['id']]);
-
         auditLog('login_success', (int) $user['id'], 'user', (int) $user['id'], [], ['role' => $effectiveRole], 'User signed in');
 
         apiResponse(true, 'Login successful.', [
@@ -632,9 +625,13 @@ try {
                 'email_warning' => $emailWarning,
             ]);
         } catch (Exception $e) {
+            if ($e->getMessage() === 'Email already registered') {
+                apiResponse(false, 'Email already registered.', null, 409);
+            }
+
             $monitor = new ErrorMonitor();
             $monitor->report($e, ['endpoint' => '/register', 'email' => $email]);
-            apiResponse(false, 'Registration failed: ' . $e->getMessage(), null, 500);
+            apiResponse(false, 'Registration failed. Please try again later.', null, 500);
         }
     }
 

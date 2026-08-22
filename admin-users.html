@@ -339,6 +339,15 @@ declare(strict_types=1);
         let allUsers = [];
         let usersToDelete = null;
 
+        async function getCsrfToken() {
+            const response = await fetch('api.php?action=csrf-token', { credentials: 'same-origin' });
+            const result = await response.json();
+            if (!result.success || !result.data?.csrf_token) {
+                throw new Error(result.message || 'Unable to initialize request security.');
+            }
+            return result.data.csrf_token;
+        }
+
         loadUsers();
 
         async function loadUsers() {
@@ -439,9 +448,10 @@ declare(strict_types=1);
             if (!usersToDelete) return;
 
             try {
+                const csrfToken = await getCsrfToken();
                 const response = await fetch('api.php?action=delete-user', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
                     body: JSON.stringify({ user_id: usersToDelete.id }),
                 });
 
@@ -481,9 +491,10 @@ declare(strict_types=1);
             };
 
             try {
+                const csrfToken = await getCsrfToken();
                 const response = await fetch('api.php?action=register', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
                     body: JSON.stringify(formData),
                 });
 

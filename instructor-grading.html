@@ -356,6 +356,15 @@ declare(strict_types=1);
     <script>
         let currentSubmission = null;
 
+        async function getCsrfToken() {
+            const response = await fetch('api.php?action=csrf-token', { credentials: 'same-origin' });
+            const result = await response.json();
+            if (!result.success || !result.data?.csrf_token) {
+                throw new Error(result.message || 'Unable to initialize request security.');
+            }
+            return result.data.csrf_token;
+        }
+
         loadSubmissions();
 
         async function loadSubmissions() {
@@ -455,9 +464,10 @@ declare(strict_types=1);
             btn.disabled = true;
 
             try {
+                const csrfToken = await getCsrfToken();
                 const response = await fetch('api.php?action=grade-submission', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
                     body: JSON.stringify({
                         submission_id: currentSubmission.id,
                         score,

@@ -383,6 +383,15 @@ declare(strict_types=1);
 
     <script>
         const assignmentId = new URLSearchParams(window.location.search).get('id');
+
+        async function getCsrfToken() {
+            const response = await fetch('api.php?action=csrf-token', { credentials: 'same-origin' });
+            const result = await response.json();
+            if (!result.success || !result.data?.csrf_token) {
+                throw new Error(result.message || 'Unable to initialize request security.');
+            }
+            return result.data.csrf_token;
+        }
         let selectedFile = null;
 
         if (!assignmentId) {
@@ -508,8 +517,10 @@ declare(strict_types=1);
                 if (selectedFile) formData.append('submission_file', selectedFile);
                 if (notes) formData.append('notes', notes);
 
+                const csrfToken = await getCsrfToken();
                 const response = await fetch('api.php?action=submit-assignment', {
                     method: 'POST',
+                    headers: { 'X-CSRF-Token': csrfToken },
                     body: formData,
                 });
 

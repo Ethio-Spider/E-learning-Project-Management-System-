@@ -248,7 +248,7 @@ declare(strict_types=1);
                                 <h3>Keep your momentum moving.</h3>
                                 <p>Complete your active tasks, review your next milestone, and stay on track with your learning roadmap.</p>
                             </div>
-                            <button class="btn btn-primary">View roadmap</button>
+                                <button class="btn btn-primary" type="button" data-view="assignments">View roadmap</button>
                         </div>
 
                         <div id="statsGrid" class="stats-grid"></div>
