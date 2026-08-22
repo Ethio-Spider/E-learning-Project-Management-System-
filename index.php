@@ -409,7 +409,7 @@ declare(strict_types=1);
                         <div class="panel">
                             <div class="panel-header">
                                 <h3>Payments</h3>
-                                <button class="mini-link" type="button">Manage</button>
+                                <button class="mini-link" id="managePaymentsBtn" type="button">Manage</button>
                             </div>
                             <div id="paymentsList" class="stack-list compact"></div>
                         </div>
@@ -516,7 +516,7 @@ declare(strict_types=1);
                     </div>
                     <div class="field-group">
                         <label for="cardNumber">Card number</label>
-                        <input id="cardNumber" type="text" inputmode="numeric" autocomplete="cc-number" placeholder="•••• •••• •••• ••••" maxlength="19">
+                        <input id="cardNumber" type="tel" inputmode="numeric" autocomplete="cc-number" placeholder="1234 5678 9012 3456" maxlength="19">
                     </div>
                     <div class="payment-card-row">
                         <div class="field-group">
@@ -529,6 +529,7 @@ declare(strict_types=1);
                         </div>
                     </div>
                 </div>
+                <p id="cardError" class="payment-error" role="alert"></p>
                 <p id="paymentProviderNote" class="payment-note">You will receive payment instructions after checkout.</p>
                 <button type="submit" class="btn btn-primary full">Continue to payment</button>
                 <small class="payment-security">Your card details are used only for this checkout demo and are never saved by this application.</small>

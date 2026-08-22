@@ -77,7 +77,9 @@ const elements = {
     cardNumber: $('#cardNumber'),
     cardExpiry: $('#cardExpiry'),
     cardCvv: $('#cardCvv'),
+    cardError: $('#cardError'),
     paymentProviderNote: $('#paymentProviderNote'),
+    managePaymentsBtn: $('#managePaymentsBtn'),
     instructorOnlyItems: $$('.instructor-only'),
 };
 
@@ -392,13 +394,18 @@ function renderCertificates(certificates) {
 }
 
 function renderPayments(items) {
+    if (!items.length) {
+        elements.paymentsList.innerHTML = '<div class="empty-box">No payments yet.</div>';
+        return;
+    }
+
     elements.paymentsList.innerHTML = items.map((item) => `
         <div class="list-item">
             <div>
-                <strong>${escapeHtml(item.plan)}</strong>
-                <small>${escapeHtml(item.status)}</small>
+                <strong>${escapeHtml(item.course_title || item.plan || 'Course payment')}</strong>
+                <small>${escapeHtml(String(item.payment_method || 'Provider').toUpperCase())} • ${escapeHtml(item.status || 'Pending')}</small>
             </div>
-            <span class="pill">${escapeHtml(item.amount)}</span>
+            <span class="pill ${item.status === 'Completed' ? 'success' : 'warning'}">${escapeHtml(item.amount)} ${escapeHtml(item.currency || 'ETB')}</span>
         </div>
     `).join('');
 }
@@ -585,6 +592,7 @@ function openPaymentModal(courseId, courseTitle, price) {
     elements.paymentCourseTitle.textContent = courseTitle;
     elements.paymentAmount.textContent = `${price.toLocaleString()} ETB`;
     elements.paymentForm.reset();
+    elements.cardError.textContent = '';
     updatePaymentFields();
     elements.paymentModal.classList.remove('hidden');
 }
@@ -607,6 +615,46 @@ function updatePaymentFields() {
         : isCard
             ? 'Enter your card details to continue to the secure provider checkout.'
             : 'You will continue to the selected payment provider after checkout.';
+    elements.cardError.textContent = '';
+}
+
+function luhnCheck(value) {
+    const digits = value.replace(/\D/g, '');
+    let total = 0;
+    let shouldDouble = false;
+
+    for (let index = digits.length - 1; index >= 0; index -= 1) {
+        let digit = Number(digits[index]);
+        if (shouldDouble) {
+            digit *= 2;
+            if (digit > 9) digit -= 9;
+        }
+        total += digit;
+        shouldDouble = !shouldDouble;
+    }
+
+    return digits.length >= 12 && total % 10 === 0;
+}
+
+function validateCardDetails() {
+    const cardNumber = elements.cardNumber.value.replace(/\D/g, '');
+    const expiry = elements.cardExpiry.value.trim();
+    const cvv = elements.cardCvv.value.replace(/\D/g, '');
+
+    if (!elements.cardholderName.value.trim()) {
+        return 'Enter the name shown on the card.';
+    }
+    if (!luhnCheck(cardNumber)) {
+        return 'Enter a valid card number.';
+    }
+    if (!/^\d{2}\/\d{2}$/.test(expiry)) {
+        return 'Enter the expiry date as MM/YY.';
+    }
+    if (!/^[0-9]{3,4}$/.test(cvv)) {
+        return 'Enter a valid 3 or 4 digit CVV.';
+    }
+
+    return '';
 }
 
 async function handlePaymentForm(event) {
@@ -614,6 +662,15 @@ async function handlePaymentForm(event) {
     const courseId = Number(elements.paymentForm.dataset.courseId);
     const courseTitle = elements.paymentForm.dataset.courseTitle;
     const paymentMethod = elements.paymentMethod.value;
+    const isCard = ['card', 'visa', 'mastercard'].includes(paymentMethod);
+
+    if (isCard) {
+        const cardError = validateCardDetails();
+        if (cardError) {
+            elements.cardError.textContent = cardError;
+            return;
+        }
+    }
 
     try {
         const payment = await api('api.php?action=initiate-payment', {
@@ -628,6 +685,9 @@ async function handlePaymentForm(event) {
         });
         closePaymentModal();
         alert(`Payment started in ETB and enrollment reserved for ${courseTitle}.`);
+        state.enrollments.add(courseId);
+        await loadPayments();
+        switchView('payments');
         loadCourses();
     } catch (error) {
         alert(error.message || 'Payment failed');
@@ -636,6 +696,10 @@ async function handlePaymentForm(event) {
 
 function switchView(view) {
     state.currentView = view;
+
+    elements.navItems.forEach((button) => {
+        button.classList.toggle('active', button.dataset.view === view);
+    });
     
     // Hide all panels
     elements.overviewPanel?.classList.add('hidden');
@@ -669,8 +733,24 @@ function switchView(view) {
         const target = overviewTargets[view];
         if (target) {
             elements.overviewPanel?.classList.remove('hidden');
+            if (view === 'payments') {
+                loadPayments();
+            }
             target.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
+    }
+}
+
+async function loadPayments() {
+    if (!state.isAuthenticated || !elements.paymentsList) {
+        return;
+    }
+
+    try {
+        const data = await api('api.php?action=user-payments');
+        renderPayments(data.payments || []);
+    } catch (error) {
+        elements.paymentsList.innerHTML = `<div class="empty-box">Unable to load payments: ${escapeHtml(error.message)}</div>`;
     }
 }
 
@@ -971,6 +1051,15 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.closePaymentModal.addEventListener('click', closePaymentModal);
     elements.paymentMethod.addEventListener('change', updatePaymentFields);
     elements.paymentForm.addEventListener('submit', handlePaymentForm);
+    elements.cardNumber.addEventListener('input', () => {
+        const digits = elements.cardNumber.value.replace(/\D/g, '').slice(0, 16);
+        elements.cardNumber.value = digits.replace(/(.{4})/g, '$1 ').trim();
+    });
+    elements.cardExpiry.addEventListener('input', () => {
+        const digits = elements.cardExpiry.value.replace(/\D/g, '').slice(0, 4);
+        elements.cardExpiry.value = digits.length > 2 ? `${digits.slice(0, 2)}/${digits.slice(2)}` : digits;
+    });
+    elements.managePaymentsBtn.addEventListener('click', () => switchView('payments'));
 
     initSession();
 });
