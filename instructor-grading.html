@@ -1,0 +1,500 @@
+<?php
+declare(strict_types=1);
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Grading Dashboard - LearnFlow Pro">
+    <meta name="theme-color" content="#4f46e5">
+    <title>Grade Submissions - LearnFlow Pro</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .grading-container {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 24px;
+        }
+        .grading-sidebar {
+            background: white;
+            border: 1px solid #dfe7ff;
+            border-radius: 14px;
+            padding: 20px;
+            box-shadow: 0 18px 40px rgba(79, 70, 229, 0.08);
+            height: fit-content;
+            position: sticky;
+            top: 100px;
+        }
+        .grading-sidebar h3 {
+            margin-bottom: 16px;
+            color: #172033;
+        }
+        .filter-group {
+            margin-bottom: 16px;
+        }
+        .filter-group label {
+            display: block;
+            font-size: 0.85rem;
+            color: #5d6b82;
+            margin-bottom: 8px;
+            font-weight: 700;
+        }
+        .filter-group select {
+            width: 100%;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #dfe7ff;
+            background: #f8fafc;
+            color: #172033;
+        }
+        .submissions-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .submission-card {
+            background: white;
+            border: 1px solid #dfe7ff;
+            border-left: 4px solid #4f46e5;
+            border-radius: 12px;
+            padding: 16px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .submission-card:hover {
+            box-shadow: 0 10px 25px rgba(79, 70, 229, 0.1);
+            transform: translateX(4px);
+        }
+        .submission-card.selected {
+            border-left-color: #10b981;
+            background: #f0fdf4;
+        }
+        .submission-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 8px;
+        }
+        .submission-name {
+            font-weight: 700;
+            color: #172033;
+        }
+        .submission-status {
+            font-size: 0.8rem;
+            font-weight: 700;
+            padding: 4px 8px;
+            border-radius: 4px;
+            background: #eef2ff;
+            color: #4f46e5;
+        }
+        .submission-status.pending {
+            background: #fff7ed;
+            color: #b45309;
+        }
+        .submission-status.graded {
+            background: #ecfdf5;
+            color: #047857;
+        }
+        .submission-meta {
+            font-size: 0.85rem;
+            color: #5d6b82;
+        }
+        .grading-panel {
+            background: white;
+            border: 1px solid #dfe7ff;
+            border-radius: 14px;
+            padding: 30px;
+            box-shadow: 0 18px 40px rgba(79, 70, 229, 0.08);
+        }
+        .grading-header {
+            margin-bottom: 24px;
+        }
+        .grading-header h2 {
+            font-size: 1.5rem;
+            margin-bottom: 8px;
+            color: #172033;
+        }
+        .student-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+            padding-bottom: 24px;
+            border-bottom: 1px solid #dfe7ff;
+        }
+        .info-item strong {
+            display: block;
+            color: #5d6b82;
+            font-size: 0.8rem;
+            margin-bottom: 4px;
+        }
+        .submission-content {
+            background: #f8fafc;
+            border-radius: 10px;
+            padding: 16px;
+            margin-bottom: 24px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .submission-content h3 {
+            font-size: 1rem;
+            margin-bottom: 12px;
+            color: #172033;
+        }
+        .submission-content p {
+            color: #5d6b82;
+            line-height: 1.6;
+            white-space: pre-wrap;
+        }
+        .grading-form {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .form-group label {
+            font-weight: 700;
+            color: #172033;
+        }
+        .form-group input,
+        .form-group textarea {
+            padding: 12px 14px;
+            border-radius: 10px;
+            border: 1px solid #dfe7ff;
+            background: #f8fafc;
+            color: #172033;
+            font-family: inherit;
+        }
+        .form-group input:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #4f46e5;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+        }
+        .score-input-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        .form-group textarea {
+            min-height: 150px;
+            resize: vertical;
+        }
+        .form-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 24px;
+        }
+        .btn-grade {
+            flex: 1;
+            padding: 12px 20px;
+            background: linear-gradient(135deg, #4f46e5, #7c3aed);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: opacity 0.2s ease;
+        }
+        .btn-grade:hover {
+            opacity: 0.95;
+        }
+        .btn-grade:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+        .placeholder {
+            text-align: center;
+            padding: 60px 20px;
+            color: #5d6b82;
+        }
+        .placeholder p {
+            margin: 0;
+        }
+        .error-message {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #ef4444;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        .success-message {
+            background: #ecfdf5;
+            border: 1px solid #a7f3d0;
+            color: #047857;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        @media (max-width: 1024px) {
+            .grading-container {
+                grid-template-columns: 1fr;
+            }
+            .grading-sidebar {
+                position: static;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-shell" style="grid-template-columns: 1fr;">
+        <main class="main-panel">
+            <header class="topbar">
+                <div>
+                    <p class="eyebrow">LearnFlow Pro</p>
+                    <h2>Grade Submissions</h2>
+                </div>
+                <div class="topbar-actions">
+                    <button class="btn btn-secondary" onclick="window.history.back()">← Back</button>
+                </div>
+            </header>
+
+            <div class="grading-container">
+                <div class="grading-sidebar">
+                    <h3>Filter Submissions</h3>
+                    
+                    <div class="filter-group">
+                        <label>Course</label>
+                        <select id="courseFilter">
+                            <option value="">All Courses</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-group">
+                        <label>Assignment</label>
+                        <select id="assignmentFilter">
+                            <option value="">All Assignments</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-group">
+                        <label>Status</label>
+                        <select id="statusFilter">
+                            <option value="">All</option>
+                            <option value="pending">Pending</option>
+                            <option value="graded">Graded</option>
+                        </select>
+                    </div>
+
+                    <div style="margin-top: 20px;">
+                        <h3 style="margin-top: 0;">Submissions</h3>
+                        <div id="submissionsList" class="submissions-list"></div>
+                    </div>
+                </div>
+
+                <div class="grading-panel">
+                    <div id="errorMessage" class="error-message"></div>
+                    <div id="successMessage" class="success-message"></div>
+
+                    <div id="noSelection" class="placeholder">
+                        <p>Select a submission to grade</p>
+                    </div>
+
+                    <div id="gradingContent" style="display: none;">
+                        <div class="grading-header">
+                            <h2 id="submissionTitle"></h2>
+                            <p id="submissionCourse" style="color: #5d6b82; margin: 0;"></p>
+                        </div>
+
+                        <div class="student-info">
+                            <div class="info-item">
+                                <strong>Student Name</strong>
+                                <span id="studentName"></span>
+                            </div>
+                            <div class="info-item">
+                                <strong>Submission Date</strong>
+                                <span id="submissionDate"></span>
+                            </div>
+                            <div class="info-item">
+                                <strong>Current Status</strong>
+                                <span id="currentStatus"></span>
+                            </div>
+                        </div>
+
+                        <h3 style="color: #172033; margin: 20px 0 12px;">Student's Submission</h3>
+                        <div class="submission-content">
+                            <div id="submissionTextContent"></div>
+                            <div id="submissionFileContent" style="margin-top: 12px;"></div>
+                        </div>
+
+                        <form id="gradingForm" class="grading-form">
+                            <div class="score-input-group">
+                                <div class="form-group">
+                                    <label for="score">Score</label>
+                                    <input type="number" id="score" name="score" min="0" placeholder="e.g., 85" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="maxScore">Max Score</label>
+                                    <input type="number" id="maxScore" name="maxScore" min="1" placeholder="e.g., 100" value="100" disabled>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="feedback">Feedback for Student</label>
+                                <textarea id="feedback" name="feedback" placeholder="Provide detailed feedback on the submission..."></textarea>
+                            </div>
+
+                            <div class="form-actions">
+                                <button type="submit" class="btn-grade" id="submitGradeBtn">Submit Grade</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        let currentSubmission = null;
+
+        loadSubmissions();
+
+        async function loadSubmissions() {
+            try {
+                const response = await fetch('api.php?action=grading-submissions');
+                const result = await response.json();
+
+                if (!result.success) {
+                    showError('Failed to load submissions');
+                    return;
+                }
+
+                renderSubmissions(result.data);
+            } catch (error) {
+                showError('Error: ' + error.message);
+            }
+        }
+
+        function renderSubmissions(data) {
+            const listEl = document.getElementById('submissionsList');
+            
+            if (!data.submissions || data.submissions.length === 0) {
+                listEl.innerHTML = '<p style="color: #5d6b82; text-align: center;">No submissions yet</p>';
+                return;
+            }
+
+            listEl.innerHTML = data.submissions.map(sub => `
+                <div class="submission-card" data-id="${sub.id}">
+                    <div class="submission-header">
+                        <div class="submission-name">${sub.student_name}</div>
+                        <span class="submission-status ${sub.status.toLowerCase()}">${sub.status}</span>
+                    </div>
+                    <div class="submission-meta">
+                        <div>${sub.assignment_title}</div>
+                        <div>Submitted: ${new Date(sub.submitted_at).toLocaleDateString()}</div>
+                    </div>
+                </div>
+            `).join('');
+
+            listEl.querySelectorAll('.submission-card').forEach(card => {
+                card.addEventListener('click', () => {
+                    listEl.querySelectorAll('.submission-card').forEach(c => c.classList.remove('selected'));
+                    card.classList.add('selected');
+                    const id = card.dataset.id;
+                    const sub = data.submissions.find(s => s.id == id);
+                    if (sub) displaySubmission(sub);
+                });
+            });
+        }
+
+        function displaySubmission(submission) {
+            currentSubmission = submission;
+            document.getElementById('noSelection').style.display = 'none';
+            document.getElementById('gradingContent').style.display = 'block';
+
+            document.getElementById('submissionTitle').textContent = submission.assignment_title;
+            document.getElementById('submissionCourse').textContent = submission.course_title;
+            document.getElementById('studentName').textContent = submission.student_name;
+            document.getElementById('submissionDate').textContent = new Date(submission.submitted_at).toLocaleDateString();
+            document.getElementById('currentStatus').innerHTML = `<span class="submission-status ${submission.status.toLowerCase()}">${submission.status}</span>`;
+
+            const textContent = document.getElementById('submissionTextContent');
+            if (submission.submission_text) {
+                textContent.innerHTML = `<h4 style="color: #172033; margin-top: 0;">Text Submission:</h4><p>${submission.submission_text}</p>`;
+            } else {
+                textContent.innerHTML = '';
+            }
+
+            const fileContent = document.getElementById('submissionFileContent');
+            if (submission.file_url) {
+                fileContent.innerHTML = `<h4 style="color: #172033; margin: 0;">Attached File:</h4><p><a href="${submission.file_url}" target="_blank" style="color: #4f46e5; text-decoration: none; font-weight: 700;">📄 ${submission.file_name || 'Download File'}</a></p>`;
+            }
+
+            if (submission.status === 'Graded' && submission.score) {
+                document.getElementById('score').value = submission.score;
+                document.getElementById('feedback').value = submission.feedback || '';
+                document.getElementById('submitGradeBtn').textContent = 'Update Grade';
+            } else {
+                document.getElementById('score').value = '';
+                document.getElementById('feedback').value = '';
+                document.getElementById('submitGradeBtn').textContent = 'Submit Grade';
+            }
+        }
+
+        document.getElementById('gradingForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const score = parseFloat(document.getElementById('score').value);
+            const feedback = document.getElementById('feedback').value.trim();
+
+            if (!score || score < 0) {
+                showError('Please enter a valid score');
+                return;
+            }
+
+            const btn = document.getElementById('submitGradeBtn');
+            btn.disabled = true;
+
+            try {
+                const response = await fetch('api.php?action=grade-submission', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        submission_id: currentSubmission.id,
+                        score,
+                        feedback,
+                        max_score: 100,
+                    }),
+                });
+
+                const result = await response.json();
+
+                if (!result.success) {
+                    showError(result.message || 'Failed to grade submission');
+                    btn.disabled = false;
+                    return;
+                }
+
+                showSuccess('Grade submitted successfully!');
+                setTimeout(() => loadSubmissions(), 1500);
+            } catch (error) {
+                showError('Error: ' + error.message);
+                btn.disabled = false;
+            }
+        });
+
+        function showError(msg) {
+            const el = document.getElementById('errorMessage');
+            el.textContent = msg;
+            el.style.display = 'block';
+            document.getElementById('successMessage').style.display = 'none';
+        }
+
+        function showSuccess(msg) {
+            const el = document.getElementById('successMessage');
+            el.textContent = msg;
+            el.style.display = 'block';
+            document.getElementById('errorMessage').style.display = 'none';
+        }
+    </script>
+</body>
+</html>

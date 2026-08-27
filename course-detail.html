@@ -1,0 +1,422 @@
+<?php
+declare(strict_types=1);
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Course Details - LearnFlow Pro">
+    <meta name="theme-color" content="#4f46e5">
+    <title>Course Details - LearnFlow Pro</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .course-detail-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .course-hero {
+            background: linear-gradient(135deg, #eef2ff, #ecfef8);
+            border-radius: 16px;
+            padding: 40px;
+            margin-bottom: 30px;
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 30px;
+            align-items: start;
+        }
+        .course-hero h1 {
+            font-size: 2.2rem;
+            margin-bottom: 16px;
+            color: #172033;
+        }
+        .course-hero p {
+            color: #5d6b82;
+            line-height: 1.6;
+            margin-bottom: 12px;
+        }
+        .course-info-badge {
+            display: inline-flex;
+            align-items: center;
+            background: white;
+            padding: 8px 14px;
+            border-radius: 8px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #dfe7ff;
+            font-size: 0.9rem;
+        }
+        .course-sidebar {
+            background: white;
+            border: 1px solid #dfe7ff;
+            border-radius: 14px;
+            padding: 20px;
+            box-shadow: 0 18px 40px rgba(79, 70, 229, 0.08);
+        }
+        .course-price {
+            font-size: 2rem;
+            font-weight: 800;
+            color: #4f46e5;
+            margin-bottom: 16px;
+        }
+        .course-price.free {
+            color: #10b981;
+        }
+        .enroll-button {
+            width: 100%;
+            padding: 14px 20px;
+            background: linear-gradient(135deg, #4f46e5, #7c3aed);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-weight: 700;
+            font-size: 1rem;
+            cursor: pointer;
+            margin-bottom: 12px;
+            transition: opacity 0.2s ease;
+        }
+        .enroll-button:hover {
+            opacity: 0.95;
+        }
+        .enroll-button.enrolled {
+            background: #10b981;
+        }
+        .sidebar-info {
+            display: flex;
+            align-items: center;
+            margin: 12px 0;
+            padding: 12px 0;
+            border-bottom: 1px solid #edf2ff;
+            font-size: 0.95rem;
+        }
+        .sidebar-info:last-child {
+            border-bottom: none;
+        }
+        .sidebar-info strong {
+            display: block;
+            color: #5d6b82;
+            font-size: 0.8rem;
+            margin-bottom: 4px;
+        }
+        .content-section {
+            background: white;
+            border: 1px solid #dfe7ff;
+            border-radius: 14px;
+            padding: 30px;
+            margin-bottom: 24px;
+            box-shadow: 0 18px 40px rgba(79, 70, 229, 0.08);
+        }
+        .content-section h2 {
+            font-size: 1.4rem;
+            margin-bottom: 16px;
+            color: #172033;
+        }
+        .content-section h3 {
+            font-size: 1.1rem;
+            margin-top: 20px;
+            margin-bottom: 12px;
+            color: #172033;
+        }
+        .content-section p {
+            color: #5d6b82;
+            line-height: 1.6;
+            margin-bottom: 12px;
+        }
+        .lesson-item {
+            background: #f8fafc;
+            border-left: 4px solid #4f46e5;
+            padding: 16px;
+            margin-bottom: 12px;
+            border-radius: 8px;
+        }
+        .lesson-item strong {
+            display: block;
+            color: #172033;
+            margin-bottom: 4px;
+        }
+        .lesson-item small {
+            color: #5d6b82;
+        }
+        .instructor-card {
+            background: linear-gradient(135deg, #eef2ff, #ffffff);
+            border: 1px solid #dfe7ff;
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            gap: 16px;
+            align-items: center;
+        }
+        .instructor-avatar {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #818cf8, #22c55e);
+            display: grid;
+            place-items: center;
+            color: white;
+            font-weight: 700;
+            font-size: 1.4rem;
+            flex-shrink: 0;
+        }
+        .instructor-info h4 {
+            margin: 0 0 4px 0;
+            color: #172033;
+        }
+        .instructor-info p {
+            margin: 0;
+            font-size: 0.9rem;
+            color: #5d6b82;
+        }
+        .tabs {
+            display: flex;
+            gap: 0;
+            border-bottom: 2px solid #dfe7ff;
+            margin-bottom: 24px;
+        }
+        .tab-button {
+            padding: 12px 20px;
+            background: transparent;
+            border: none;
+            color: #5d6b82;
+            font-weight: 700;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s ease;
+            margin-bottom: -2px;
+        }
+        .tab-button.active {
+            color: #4f46e5;
+            border-bottom-color: #4f46e5;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #5d6b82;
+        }
+        @media (max-width: 768px) {
+            .course-hero {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-shell" style="grid-template-columns: 1fr;">
+        <main class="main-panel">
+            <header class="topbar">
+                <div>
+                    <p class="eyebrow">LearnFlow Pro</p>
+                    <h2>Course Details</h2>
+                </div>
+                <div class="topbar-actions">
+                    <button class="btn btn-secondary" onclick="window.history.back()">← Back</button>
+                </div>
+            </header>
+
+            <div class="course-detail-container">
+                <div id="courseLoading" class="loading">
+                    <p>Loading course details...</p>
+                </div>
+
+                <div id="courseContent" style="display: none;">
+                    <div class="course-hero">
+                        <div>
+                            <h1 id="courseTitle"></h1>
+                            <p id="courseDescription"></p>
+                            <div id="courseMeta"></div>
+                        </div>
+                        <div class="course-sidebar">
+                            <div class="course-price" id="coursePrice"></div>
+                            <button id="enrollButton" class="enroll-button">Enroll Now</button>
+                            <div class="sidebar-info">
+                                <strong>Students</strong>
+                                <span id="enrollmentCount">0 enrolled</span>
+                            </div>
+                            <div class="sidebar-info">
+                                <strong>Duration</strong>
+                                <span id="courseDuration"></span>
+                            </div>
+                            <div class="sidebar-info">
+                                <strong>Level</strong>
+                                <span id="courseLevel"></span>
+                            </div>
+                            <div class="sidebar-info">
+                                <strong>Category</strong>
+                                <span id="courseCategory"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tabs">
+                        <button class="tab-button active" data-tab="overview">Overview</button>
+                        <button class="tab-button" data-tab="lessons">Lessons</button>
+                        <button class="tab-button" data-tab="instructor">Instructor</button>
+                    </div>
+
+                    <div id="overview" class="tab-content active">
+                        <div class="content-section">
+                            <h2>About This Course</h2>
+                            <p id="fullDescription"></p>
+                            <h3>What You'll Learn</h3>
+                            <div id="learningOutcomes"></div>
+                        </div>
+                    </div>
+
+                    <div id="lessons" class="tab-content">
+                        <div class="content-section">
+                            <h2>Course Lessons</h2>
+                            <div id="lessonsList"></div>
+                        </div>
+                    </div>
+
+                    <div id="instructor" class="tab-content">
+                        <div class="content-section">
+                            <h2>Meet Your Instructor</h2>
+                            <div id="instructorCard"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const courseId = new URLSearchParams(window.location.search).get('id');
+
+        if (!courseId) {
+            document.querySelector('.course-detail-container').innerHTML = '<div class="empty-box">Course not found</div>';
+        } else {
+            loadCourseDetails();
+        }
+
+        async function loadCourseDetails() {
+            try {
+                const response = await fetch(`api.php?action=course&id=${encodeURIComponent(courseId)}`);
+                const result = await response.json();
+
+                if (!result.success) {
+                    throw new Error(result.message || 'Failed to load course');
+                }
+
+                renderCourse(result.data);
+            } catch (error) {
+                document.getElementById('courseLoading').innerHTML = `<div class="empty-box">Error: ${error.message}</div>`;
+            }
+        }
+
+        function renderCourse(course) {
+            document.getElementById('courseLoading').style.display = 'none';
+            document.getElementById('courseContent').style.display = 'block';
+
+            // Hero section
+            document.getElementById('courseTitle').textContent = course.title;
+            document.getElementById('courseDescription').textContent = course.description;
+            document.getElementById('courseDuration').textContent = course.duration;
+            document.getElementById('courseLevel').textContent = course.level;
+            document.getElementById('courseCategory').textContent = course.category;
+            document.getElementById('enrollmentCount').textContent = `${course.enrollment_count || 0} students enrolled`;
+            document.getElementById('fullDescription').textContent = course.description;
+
+            // Price
+            const priceEl = document.getElementById('coursePrice');
+            if (course.price && course.price > 0) {
+                priceEl.textContent = `$${course.price}`;
+                priceEl.classList.remove('free');
+            } else {
+                priceEl.textContent = 'Free';
+                priceEl.classList.add('free');
+            }
+
+            // Meta badges
+            const metaHtml = `
+                <div class="course-info-badge">${course.level}</div>
+                <div class="course-info-badge">${course.category}</div>
+                <div class="course-info-badge">⏱️ ${course.duration}</div>
+            `;
+            document.getElementById('courseMeta').innerHTML = metaHtml;
+
+            // Learning outcomes
+            if (course.outcomes && course.outcomes.length) {
+                document.getElementById('learningOutcomes').innerHTML = course.outcomes
+                    .map(outcome => `<div class="lesson-item">✓ ${outcome}</div>`)
+                    .join('');
+            }
+
+            // Lessons
+            if (course.lessons && course.lessons.length) {
+                document.getElementById('lessonsList').innerHTML = course.lessons
+                    .map((lesson, idx) => `
+                        <div class="lesson-item">
+                            <strong>Lesson ${idx + 1}: ${lesson.title}</strong>
+                            <small>${lesson.duration || '30 min'} • ${lesson.type || 'Video'}</small>
+                        </div>
+                    `)
+                    .join('');
+            }
+
+            // Instructor
+            if (course.instructor_name) {
+                document.getElementById('instructorCard').innerHTML = `
+                    <div class="instructor-card">
+                        <div class="instructor-avatar">${course.instructor_name.charAt(0).toUpperCase()}</div>
+                        <div class="instructor-info">
+                            <h4>${course.instructor_name}</h4>
+                            <p>${course.instructor_bio || 'Professional Instructor'}</p>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Enroll button
+            const enrollBtn = document.getElementById('enrollButton');
+            if (course.is_enrolled) {
+                enrollBtn.textContent = 'Already Enrolled';
+                enrollBtn.classList.add('enrolled');
+                enrollBtn.disabled = true;
+            } else {
+                enrollBtn.onclick = () => enrollCourse(course);
+            }
+        }
+
+        async function enrollCourse(course) {
+            if (!confirm(`Enroll in "${course.title}"?`)) return;
+
+            try {
+                const response = await fetch('api.php?action=enroll', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ course_id: courseId }),
+                });
+
+                const result = await response.json();
+
+                if (!result.success) {
+                    alert(result.message || 'Enrollment failed');
+                    return;
+                }
+
+                alert('Successfully enrolled!');
+                location.reload();
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
+        // Tab switching
+        document.querySelectorAll('.tab-button').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                btn.classList.add('active');
+                document.getElementById(btn.dataset.tab).classList.add('active');
+            });
+        });
+    </script>
+</body>
+</html>

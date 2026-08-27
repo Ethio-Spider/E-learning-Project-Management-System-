@@ -1,0 +1,238 @@
+:root {
+    --auth-ink: #17211d;
+    --auth-muted: #64716b;
+    --auth-paper: #f6f5ef;
+    --auth-surface: #fffef9;
+    --auth-line: #d9dfd6;
+    --auth-green: #1f6b52;
+    --auth-green-dark: #164936;
+    --auth-lime: #d9ee82;
+    --auth-coral: #ee765d;
+}
+
+body {
+    font-family: "Avenir Next", "Segoe UI", sans-serif;
+    background-color: var(--auth-paper);
+    background-image: radial-gradient(#dce3d8 0.8px, transparent 0.8px);
+    background-size: 18px 18px;
+    color: var(--auth-ink);
+}
+
+.auth-shell {
+    width: min(100%, 1060px);
+    min-height: 640px;
+    border: 1px solid rgba(31, 107, 82, 0.18);
+    border-radius: 22px;
+    background: var(--auth-surface);
+    box-shadow: 0 24px 70px rgba(23, 33, 29, 0.14);
+}
+
+.brand-panel {
+    background: var(--auth-green-dark);
+    padding: 54px 48px;
+    isolation: isolate;
+    overflow: hidden;
+}
+
+.brand-panel::before,
+.brand-panel::after {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    border-radius: 50%;
+    border: 1px solid rgba(217, 238, 130, 0.24);
+}
+
+.brand-panel::before {
+    width: 360px;
+    height: 360px;
+    right: -170px;
+    top: -110px;
+}
+
+.brand-panel::after {
+    width: 260px;
+    height: 260px;
+    left: -150px;
+    bottom: -130px;
+}
+
+.brand-badge {
+    width: 58px;
+    height: 58px;
+    border-radius: 16px;
+    background: var(--auth-lime);
+    color: var(--auth-green-dark);
+    box-shadow: 8px 8px 0 rgba(238, 118, 93, 0.85);
+    font-size: 1.3rem;
+    letter-spacing: 0.04em;
+}
+
+.eyebrow {
+    color: var(--auth-lime);
+    letter-spacing: 0.18em;
+    font-size: 0.7rem;
+}
+
+.brand-panel h1 {
+    max-width: 440px;
+    font-size: clamp(2.3rem, 4vw, 3.8rem);
+    letter-spacing: -0.04em;
+    line-height: 0.98;
+}
+
+.brand-panel p {
+    max-width: 390px;
+    color: rgba(255, 255, 255, 0.72);
+}
+
+.feature-list {
+    gap: 10px;
+}
+
+.feature-pill,
+.feature-card {
+    border: 1px solid rgba(217, 238, 130, 0.24);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.feature-pill {
+    padding: 11px 12px;
+    color: rgba(255, 255, 255, 0.86);
+}
+
+.card-panel {
+    background: var(--auth-surface);
+    padding: 48px 52px;
+}
+
+.auth-card {
+    width: min(100%, 410px);
+}
+
+.auth-header {
+    text-align: left;
+    margin-bottom: 30px;
+}
+
+.auth-header h2 {
+    color: var(--auth-ink);
+    font-size: clamp(2rem, 3vw, 2.7rem);
+    letter-spacing: -0.045em;
+}
+
+.auth-header p,
+.sign-switch,
+.inline-row,
+.hint,
+.checkbox-row {
+    color: var(--auth-muted);
+}
+
+form {
+    gap: 16px;
+}
+
+label {
+    color: var(--auth-ink);
+    font-size: 0.84rem;
+    letter-spacing: 0.01em;
+}
+
+input,
+select {
+    border: 1px solid var(--auth-line);
+    border-radius: 10px;
+    background: #fbfcf8;
+    padding: 14px 15px;
+    color: var(--auth-ink);
+}
+
+input:hover,
+select:hover {
+    border-color: #afbeb3;
+}
+
+input:focus,
+select:focus {
+    border-color: var(--auth-green);
+    box-shadow: 0 0 0 4px rgba(31, 107, 82, 0.13);
+}
+
+.password-toggle {
+    color: var(--auth-green);
+}
+
+.inline-row a,
+.sign-switch a,
+.checkbox-row a {
+    color: var(--auth-green);
+}
+
+.submit-btn {
+    border-radius: 10px;
+    background: var(--auth-green);
+    box-shadow: 0 12px 22px rgba(31, 107, 82, 0.2);
+    padding: 15px 16px;
+}
+
+.submit-btn:hover {
+    background: var(--auth-green-dark);
+    transform: translateY(-2px);
+}
+
+.message.error {
+    background: #fff1ee;
+    border-color: #f5c0b5;
+    color: #a53d2c;
+}
+
+.message.success {
+    background: #eef8dc;
+    border-color: #c9e394;
+    color: #356214;
+}
+
+@media (max-width: 860px) {
+    body {
+        padding: 14px;
+    }
+
+    .auth-shell {
+        min-height: auto;
+        grid-template-columns: 1fr;
+    }
+
+    .brand-panel {
+        padding: 34px 28px 32px;
+    }
+
+    .brand-panel h1 {
+        max-width: 620px;
+    }
+
+    .card-panel {
+        padding: 36px 28px 42px;
+    }
+}
+
+@media (max-width: 520px) {
+    .feature-list {
+        grid-template-columns: 1fr;
+    }
+
+    .card-panel {
+        padding-inline: 20px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+    }
+}

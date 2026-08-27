@@ -1,0 +1,40 @@
+version: '3.9'
+
+services:
+  app:
+    build: .
+    container_name: elearning-app
+    ports:
+      - "8080:80"
+    environment:
+      DB_HOST: db
+      DB_NAME: elearning_db
+      DB_USER: elearning_user
+      DB_PASSWORD: elearning_password
+      APP_ENV: production
+      APP_DEBUG: "false"
+      EMAIL_FROM: noreply@local.test
+      EMAIL_FROM_NAME: E-Learning Platform
+    depends_on:
+      - db
+    volumes:
+      - .:/var/www/html
+      - ./logs:/var/www/html/logs
+      - ./uploads:/var/www/html/uploads
+      - ./backups:/var/www/html/backups
+
+  db:
+    image: mysql:8.0
+    container_name: elearning-db
+    environment:
+      MYSQL_DATABASE: elearning_db
+      MYSQL_USER: elearning_user
+      MYSQL_PASSWORD: elearning_password
+      MYSQL_ROOT_PASSWORD: root_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+volumes:
+  mysql_data:
